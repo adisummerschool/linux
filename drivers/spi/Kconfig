@@ -69,6 +69,13 @@ config SPI_AIROHA_SNFI
 	  This enables support for SPI-NAND mode on the Airoha NAND
 	  Flash Interface found on Airoha ARM SoCs. This controller
 	  is implemented as a SPI-MEM controller.
+config SPI_ADI_EMU
+	depends on SPI
+	select REGMAP_SPI
+	tristate "Analog Devices SPI Emulator Controller"
+	help
+	  This enables support for the Analog Devices, Inc. SPI Emulator
+	  Controller.
 
 config SPI_ALTERA
 	tristate "Altera SPI Controller platform driver"
