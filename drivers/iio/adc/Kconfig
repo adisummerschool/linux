@@ -165,6 +165,17 @@ config AD4695
 	  To compile this driver as a module, choose M here: the module will be
 	  called ad4695.
 
+config AD5592R_S
+	tristate "Analog Device AD5592R_S ADC Driver"
+	depends on SPI
+	depends on IIO
+	help
+	  Say yes here to build support for Analog Devices AD5592R_S and similar
+	  analog to digital converters (ADC).
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called ad5592r_s.
+
 config AD7091R
 	tristate
 
