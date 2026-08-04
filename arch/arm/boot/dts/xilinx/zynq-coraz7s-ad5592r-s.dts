@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Analog Devices ad5592r_s
+ *
+ * Copyright (C) 2026 Analog Devices Inc.
+ */
+/dts-v1/;
+#include "zynq-coraz7s.dtsi"
+
+&spi0 {
+	status = "okay";
+	ad5592r_s: spi_adc@0 {
+		reg = <0>;
+		compatible = "ad5592r_s";
+		spi-max-frequency = <10000000>;
+	};
+};
