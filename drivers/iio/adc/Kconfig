@@ -453,6 +453,17 @@ config AD7791
 	  To compile this driver as a module, choose M here: the module will be
 	  called ad7791.
 
+config IIO_ADC_EMU
+	tristate "Analog Devices IIO Emulator ADC driver"
+	depends on SPI
+	depends on IIO
+	help
+	  Say yes here to build support for Analog Devices IIO_ADC_EMU analog to digital 
+	  converters (ADC).
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called IIO_ADC_EMU.
+
 config AD7793
 	tristate "Analog Devices AD7793 and similar ADCs driver"
 	depends on SPI
