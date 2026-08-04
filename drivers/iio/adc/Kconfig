@@ -975,6 +975,15 @@ config HX711
 
 	  This driver can also be built as a module. If so, the module will be
 	  called hx711.
+config IIO_ADC_EMU
+	tristate "Analog Devies ADC emulated driver"
+	depends on SPI
+	depends on IIO
+	help
+	  Say yes here to build support for Analof Devices ADC EMU SPI driver.
+	  
+	  To compile this driver as a module choose M here,
+	  the module will be called iio_adc_emu.
 
 config INA2XX_ADC
 	tristate "Texas Instruments INA2xx Power Monitors IIO driver"
