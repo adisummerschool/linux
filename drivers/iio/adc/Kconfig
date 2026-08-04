@@ -6,6 +6,16 @@
 
 menu "Analog to digital converters"
 
+config IIO_AD5592R_S
+	tristate "Analog Devices IIO ad5592r_s driver"
+	depends on SPI
+	depends on IIO
+	help
+	  Say yes here to build support for Analog Devices IIO ad5592r_s SPI analog to digital converters (ADC).
+
+	  To compile this driver as a module, choose M here: the module will be
+	  called ad5592r_s.	  
+
 config AB8500_GPADC
 	bool "ST-Ericsson AB8500 GPADC driver"
 	depends on AB8500_CORE && REGULATOR_AB8500
