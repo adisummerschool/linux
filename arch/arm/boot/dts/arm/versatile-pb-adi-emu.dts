@@ -11,5 +11,6 @@
 			spi-max-frequency = <10000000>;
 			compatible = "iio_adc_emu";
 		};
+		}
 	};
 };
