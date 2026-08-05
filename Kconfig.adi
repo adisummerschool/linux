@@ -105,7 +105,7 @@ config KERNEL_ALL_ADI_DRIVERS
 	imply MFD_ADP5585
 	imply GPIO_ADP5585
 	imply PWM_ADP5585
-
+	imply AD5592R_S
 source "drivers/clk/Kconfig.adi"
 source "drivers/hwmon/Kconfig.adi"
 source "drivers/iio/Kconfig.adi"
