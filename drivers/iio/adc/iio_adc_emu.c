@@ -9,9 +9,65 @@
  #include <linux/spi/spi.h>
  #include <linux/iio/iio.h>
 
+ static int iio_adc_emu_read_raw(struct iio_dev *indio_dev, //folosim pentru a citi datele de la driver
+ 				struct iio_chan_spec const *chan,
+ 				int *val, //returnam valarea prin referinta pentru a putea fi modificata in functie de ce citim
+				int *val2, //folosim pentru floating point
+				long mask)
+ {
+ 	switch (mask) {
+ 	case IIO_CHAN_INFO_RAW:
+
+		if(chan->channel)
+			*val=67;
+		else 
+			*val =76;	
+
+		return IIO_VAL_INT;	
+
+ 	default:
+ 		return -EINVAL;
+ 	}
+ }
+
+
+
+ static int iio_adc_emu_write_raw(struct iio_dev *indio_dev, //device(ar trebui sa fie canalul nostru), canalul, valoarea, valoarea2, masca
+ 				struct iio_chan_spec const *chan,
+ 				int val,
+ 				int val2,
+ 				long mask)
+ {
+		switch (mask) {
+			case IIO_CHAN_INFO_RAW:
+				if(chan->channel)
+					dev_info(&indio_dev->dev, "Trying to write to channel 1\n");
+				else
+					dev_info(&indio_dev->dev, "Trying to write to channel 0\n");
+				return 0;
+			default:
+				return -EINVAL;
+			}
+ }
+
+ static const struct iio_chan_spec iio_adc_emu_channels[] = { //confirurare canalelor, in cazul nostru 2 canale de tip tensiune
+ 	{
+ 		.type = IIO_VOLTAGE,
+ 		.indexed = 1,
+ 		.channel = 0,
+ 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+ 	},
+ 	{
+ 		.type = IIO_VOLTAGE,
+ 		.indexed = 1,
+ 		.channel = 1,
+ 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+ 	},
+ };
 
  static const struct iio_info iio_adc_emu_info = {
-
+	.read_raw = &iio_adc_emu_read_raw,
+	.write_raw = &iio_adc_emu_write_raw,
  };
 
 
@@ -25,6 +81,9 @@
 
     indio_dev->name = "iio_adc_emu";
     indio_dev->info = &iio_adc_emu_info;
+	indio_dev->channels = iio_adc_emu_channels;
+	indio_dev->num_channels = 2;
+
 
  	return devm_iio_device_register(&spi->dev, indio_dev);
  }
