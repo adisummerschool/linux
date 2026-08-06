@@ -53,7 +53,6 @@ static int iio_adc5592rs_read_raw(struct iio_dev *indio_dev,
 
             case IIO_CHAN_INFO_ENABLE:
                 *val = st->reg_select;
-
                   return IIO_VAL_INT;
             default:
                   return -EINVAL;
@@ -76,27 +75,27 @@ static int iio_adc5592rs_write_raw(struct iio_dev *indio_dev,
                   case 0:
                     dev_info(&indio_dev->dev, "Trying to write to channel 0");
                     st->chan_val[0] = val;
-                  break;
+                    break;
                   case 1:
                     dev_info(&indio_dev->dev, "Trying to write to channel 1");
                     st->chan_val[1] = val;
-                  break;
+                    break;
                   case 2:
                     dev_info(&indio_dev->dev, "Trying to write to channel 2");
                     st->chan_val[2] = val;
-                  break;
+                    break;
                   case 3:
                     dev_info(&indio_dev->dev, "Trying to write to channel 3");
                     st->chan_val[3] = val;
-                  break;
+                    break;
                   case 4:
                     dev_info(&indio_dev->dev, "Trying to write to channel 4");
                     st->chan_val[4] = val;
-                  break;
+                    break;
                   case 5:
                     dev_info(&indio_dev->dev, "Trying to write to channel 5");
                     st->chan_val[5] = val;
-                  break;
+                    break;
                   default:
                     return -EINVAL;
                 }
@@ -181,7 +180,11 @@ static const struct iio_chan_spec iio_adc5592rs_channels[] = {
     indio_dev->name = "iio_adc";
     indio_dev->info = &iio_adc_info;
     indio_dev->channels = iio_adc5592rs_channels;
+<<<<<<< HEAD
     indio_dev->num_channels = 6;
+=======
+    indio_dev->num_channels = ARRAY_SIZE(iio_adc_emu_channels);
+>>>>>>> 12b4405d1 (drivers: iio: adc: add private structure and channel enable functionality)
 
     return devm_iio_device_register(&spi->dev,indio_dev);
  }
