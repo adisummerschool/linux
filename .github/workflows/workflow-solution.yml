@@ -1,0 +1,80 @@
+# Workflow name — appears in the Actions tab on GitHub
+name: Build Linux Binaries
+
+# "on" defines the events that trigger this workflow
+on:
+  # Run when commits are pushed to the bia1708_adc branch
+  push:
+    branches: [ bia1708_adc ]
+
+# A workflow is made up of one or more jobs. Each job runs independently.
+jobs:
+  # Job ID — can be any name; used to reference this job elsewhere
+  build-binaries:
+    # The type of virtual machine to run the job on
+    # "ubuntu-latest" gives us a fresh Ubuntu environment hosted by GitHub
+    runs-on: ubuntu-latest
+
+    # Environment variables available to every step in this job
+    env:
+      ARCH: arm
+      CROSS_COMPILE: arm-linux-gnueabi-
+
+    steps:
+      # Step 1: Check out the repository source code
+      # "actions/checkout@v4" is a standard GitHub-provided action.
+      # fetch-depth: 1 does a shallow clone (only the latest commit),
+      # which is faster than cloning the full history
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # Step 2: Install the packages needed to cross-compile the kernel
+      - name: Install dependencies
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
+
+      # Step 3: Generate the kernel .config file from a defconfig
+      - name: Configure kernel
+        run: make zynq_xcomm_adv7511_defconfig
+
+      # Step 4: Build the kernel image (uImage)
+      - name: Build kernel
+        run: make -j$(nproc) UIMAGE_LOADADDR=0x8000 uImage
+
+      # Step 5: Compile the Device Tree Blob (DTB).
+      - name: Build DTB
+        run: make zynq-coraz7s-ad5592r-s.dtb
+
+      # Step 6: Upload build artifacts to GitHub.
+      # These can be downloaded from the Actions run summary page.
+      - name: Upload uImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: uImage
+          path: arch/arm/boot/uImage
+
+      - name: Upload DTB
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtb
+          path: arch/arm/boot/dts/zynq-coraz7s-ad5592r-s.dtb
+
+  checkpatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch main branch
+        run: git fetch origin main
+
+      - name: Run checkpatch
+        run: |
+          for commit in $(git rev-list origin/main..HEAD); do
+            scripts/checkpatch.pl --git "$commit" --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict
+          done
