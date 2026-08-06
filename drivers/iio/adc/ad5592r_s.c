@@ -9,15 +9,32 @@
 #include <linux/spi/spi.h>
 #include <linux/iio/iio.h>
 
+#define AD5592R_S_NUM_CHANNELS	6
+
+struct ad5592r_s_state {
+	int reg_select;
+	int chan_val[AD5592R_S_NUM_CHANNELS];
+};
+
 static int ad5592r_s_read_raw(struct iio_dev *indio_dev,
 			      const struct iio_chan_spec *chan,
 			      int *val,
 			      int *val2,
 			      long mask)
 {
+	struct ad5592r_s_state *st = iio_priv(indio_dev);
+
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
-		*val = chan->channel * 100;
+		if (st->reg_select)
+			return -EINVAL;
+
+		*val = st->chan_val[chan->channel];
+
+		return IIO_VAL_INT;
+
+	case IIO_CHAN_INFO_ENABLE:
+		*val = st->reg_select;
 
 		return IIO_VAL_INT;
 
@@ -32,11 +49,23 @@ static int ad5592r_s_write_raw(struct iio_dev *indio_dev,
 			       int val2,
 			       long mask)
 {
+	struct ad5592r_s_state *st = iio_priv(indio_dev);
+
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
+		if (st->reg_select)
+			return -EINVAL;
+
+		st->chan_val[chan->channel] = val;
+
 		dev_info(&indio_dev->dev,
-			 "Try to write value %d to channel %d\n",
+			 "Write value %d to channel %d\n",
 			 val, chan->channel);
+
+		return 0;
+
+	case IIO_CHAN_INFO_ENABLE:
+		st->reg_select = val ? 1 : 0;
 
 		return 0;
 
@@ -52,6 +81,8 @@ static int ad5592r_s_write_raw(struct iio_dev *indio_dev,
 		.channel = (_channel),			\
 		.info_mask_separate =			\
 			BIT(IIO_CHAN_INFO_RAW),		\
+		.info_mask_shared_by_all =		\
+			BIT(IIO_CHAN_INFO_ENABLE),	\
 	}
 
 static const struct iio_chan_spec ad5592r_s_channels[] = {
@@ -71,10 +102,16 @@ static const struct iio_info ad5592r_s_info = {
 static int ad5592r_s_probe(struct spi_device *spi)
 {
 	struct iio_dev *indio_dev;
+	struct ad5592r_s_state *st;
 
-	indio_dev = devm_iio_device_alloc(&spi->dev, 0);
+	indio_dev = devm_iio_device_alloc(&spi->dev, sizeof(*st));
 	if (!indio_dev)
 		return -ENOMEM;
+
+	st = iio_priv(indio_dev);
+
+	st->reg_select = 1;
+	memset(st->chan_val, 0, sizeof(st->chan_val));
 
 	indio_dev->name = "ad5592r_s";
 	indio_dev->info = &ad5592r_s_info;
