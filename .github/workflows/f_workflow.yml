@@ -3,14 +3,19 @@ name: Dradici Leon ADC
 on:
   push:
     branches: [dradici_leon_adc]
+    paths: 
+      - '.github/workflows/f_workflow.yml'
+      - 'drivers/iio/adc/**'
+      - 'arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r_s.dts'
+    workflow dispatch:
 
 jobs:
   demo-dl-adc:
-      runs-on: ubuntu-latest
+      runs-on: dradici_leon
 
       steps:
         - name: Checkout source
-          uses: actions/checkout@v4
+          uses: actions/checkout@v7
           with:
             fetch-depth: 1
 
@@ -28,15 +33,67 @@ jobs:
             make -j14 UIMAGE_LOADADDR=0x8000 uImage
 
         - name: Upload .dtb files
-          uses: actions/upload-artifact@v4
+          uses: actions/upload-artifact@v7
           with:
             name: devicetree.dtb
             path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
 
         - name: Upload uImage
-          uses: actions/upload-artifact@v4
+          uses: actions/upload-artifact@v7
           with:
             name: uImage
             path: arch/arm/boot/uImage 
+
+  demo-checkpatch:
+      runs-on: dradici_leon
+
+      steps:
+        - name: Checkout source
+          uses: actions/checkout@v7
+          with:
+            fetch-depth: 0
+            clean: false
+
+        - name: Checkpatch command
+          run: |
+            git fetch origin main
+            for commit in $(git rev-list --reverse origin/main..HEAD); do
+            ./scripts/checkpatch.pl --git "$commit" \
+              --ignore FILE_PATH_CHANGES \
+              --ignore LONG_LINE \
+              --ignore LONG_LINE_STRING \
+              --ignore LONG_LINE_COMMENT \
+              --strict || true
+            done
+  
+
+  move-to-coraz7:
+    environment: summer_practice_secrets
+    runs-on: dradici_leon
+    needs: demo-dl-adc
+
+    steps:
+      - name: Uploading on board DeviceTree
+        uses: actions/download-artifact@v7
+        with: 
+          name: devicetree.dtb
+          path: ./
+
+      - name: Uploading on board uImage
+        uses: actions/download-artifact@v7
+        with: 
+          name: uImage
+          path: ./
+      - run: |
+          sudo apt-get install -y sshpass
+          sshpass -p '${{ secrets.dradici_leon_secret }}' scp -o StrictHostKeyChecking=no uImage root@10.76.84.220:/boot/
+          sshpass -p '${{ secrets.dradici_leon_secret }}' scp -o StrictHostKeyChecking=no zynq-coraz7s-ad5592r-s.dtb root@10.76.84.220:/boot/devicetree.dtb
+      - name: Reboot the Cora Z7
+        run: |
+          sshpass -p '${{ secrets.dradici_leon_secret }}' ssh -o StrictHostKeyChecking=no root@10.76.84.220 'sudo reboot'
+       
+        
+         
+         
 
         
