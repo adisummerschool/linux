@@ -9,37 +9,37 @@ jobs:
   build-linux:
     runs-on: ubuntu-latest
 
-  env:
-    CROSS_COMPILE: arm-none-linux-gnueabihf-
-    ARCH: arm
+    env:
+      CROSS_COMPILE: arm-none-linux-gnueabihf-
+      ARCH: arm
   
-  steps:
-    - name: Checkout source
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 1
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
-    - name: Defconfig
-      run: |
-        make zynq_xcomm_adv7511_defconfig
+      - name: Defconfig
+        run: |
+          make zynq_xcomm_adv7511_defconfig
 
-    - name: Linux kernel
-      run: | 
-        make -j$(nproc) UIMAGE_LOADADDR=0x8000 uImage
+      - name: Linux kernel
+        run: | 
+          make -j$(nproc) UIMAGE_LOADADDR=0x8000 uImage
     
     # build device tree
-    - name: Device tree
-      run: | 
-        make xilinx/zynq-coraz7s-ad5592r-s.dtb
+      - name: Device tree
+        run: | 
+          make xilinx/zynq-coraz7s-ad5592r-s.dtb
       
-    - name: Upload linux kernel
-      uses: actions/upload-artifact@v4
-      with:
-        name: uImage
-        path: arch/arm/boot/uImage
+      - name: Upload linux kernel
+        uses: actions/upload-artifact@v4
+        with:
+          name: uImage
+          path: arch/arm/boot/uImage
 
-    - name: Upload device tree
-      uses: actions/upload-artifact@v4
-      with:
-        name: devicetree.dtb
-        path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
+      - name: Upload device tree 
+        uses: actions/upload-artifact@v4
+        with:
+          name: devicetree.dtb
+          path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
