@@ -1,0 +1,48 @@
+name: Molnar_Levente_adc_ad5592r
+
+on:
+  push:
+    branches: [ Molnar_Levente_adc ]
+
+jobs:
+  demo-workflow:
+    runs-on: ubuntu-latest
+
+    env:
+      CROSS_COMPILE: arm-linux-gnueabi-
+      ARCH: arm
+    
+    steps:
+      - name: Install Compiler  
+        run: |
+          sudo apt-get -q update
+          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
+
+      - name: Checkout source
+        uses: actions/checkout@v4 
+        with:
+          fetch-depth: 1
+
+      - name: Built config
+        run: |
+          make versatile_adi_defconfig
+
+      - name: Build kernel    
+        run: |
+          make -j$(nproc) UIMAGE_LOADADDR=0x8000 uImage
+
+      - name: Build device tree    
+        run: |
+          make xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uImage
+          path: arch/arm/boot/uImage
+
+      - name: Upload dtb
+        uses: actions/upload-artifact@v4
+        with:
+          name: zynq-coraz7s-ad5592r-s.dtb
+          path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
