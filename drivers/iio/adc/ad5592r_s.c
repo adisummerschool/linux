@@ -180,12 +180,9 @@ static const struct iio_chan_spec iio_adc5592rs_channels[] = {
     indio_dev->name = "iio_adc";
     indio_dev->info = &iio_adc_info;
     indio_dev->channels = iio_adc5592rs_channels;
-<<<<<<< HEAD
-    indio_dev->num_channels = 6;
-=======
-    indio_dev->num_channels = ARRAY_SIZE(iio_adc_emu_channels);
->>>>>>> 12b4405d1 (drivers: iio: adc: add private structure and channel enable functionality)
 
+    indio_dev->num_channels = ARRAY_SIZE(iio_adc5592rs_channels);
+    
     return devm_iio_device_register(&spi->dev,indio_dev);
  }
 
