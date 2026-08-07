@@ -3,11 +3,15 @@ name: Demo Workflow
 on:
   push:
     branches: [strava_cosmin_adc]
+    paths:
+    - '.github/workflows/Demo_Workflow.yml'
+    - 'drivers/iio/adc/**'
+    - 'arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dts'
 
 jobs:
 
   demo_workflow:
-    runs-on: ubuntu-latest
+    runs-on: strava_cosmin_adc
 
     env:
       CROSS_COMPILE : arm-linux-gnueabi-
@@ -45,5 +49,58 @@ jobs:
       - name: Upload Device Tree artifact
         uses: actions/upload-artifact@v4
         with:
-          name: zynq-coraz7s-ad5592r-s.dtb
+          name: devicetree.dtb
           path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+  demo_checkpatch:
+    runs-on: strava_cosmin_adc
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean: false
+
+      - name: Fetch all commits
+        run: git fetch origin main
+
+      - name: Run checkpatch
+        run: |
+          set -x
+          for commit in $(git rev-list --reverse origin/main..HEAD); do
+            ./scripts/checkpatch.pl --git "$commit" \
+            --ignore FILE_PATH_CHANGES \
+            --ignore LONG_LINE \
+            --ignore LONG_LINE_STRING \
+            --ignore LONG_LINE_COMMENT \
+            --strict || true
+          done
+        
+  scp_artifacts:
+    runs-on: strava_cosmin_adc
+    environment: summer_practice_secrets
+    needs: [demo_workflow]
+    steps:
+
+    - name: Download Kernel Artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: uImage
+        path: ./
+
+    - name: Download Device Tree Artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: devicetree.dtb
+        path: ./
+
+    - name: Copy artifacts to the Cora Z7
+      run: |
+        sudo apt-get install -y sshpass
+        sshpass -p '${{secrets.strava_cosmin_secret }}' scp -o StrictHostKeyChecking=no uImage root@10.76.84.137:/boot/
+        sshpass -p '${{secrets.strava_cosmin_secret }}' scp -o StrictHostKeyChecking=no zynq-coraz7s-ad5592r-s.dtb root@10.76.84.137:/boot/devicetree.dtb
+
+    - name: Reboot the Cora Z7
+      run: |
+        sshpass -p '${{secrets.strava_cosmin_secret }}' ssh -o StrictHostKeyChecking=no  root@10.76.84.137 'sudo reboot'
