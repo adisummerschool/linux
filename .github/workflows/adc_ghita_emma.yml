@@ -51,7 +51,6 @@ jobs:
 
   checkpatch:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -66,3 +65,27 @@ jobs:
           for commit in $(git rev-list origin/main..HEAD); do
             scripts/checkpatch.pl --git "$commit" --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict;
           done
+
+  on-cora:
+    runs-on: emmaghita
+    environment: summer_practice_secrets
+    needs: [ build-linux ]
+    steps:
+      - name: Download uImage
+        uses: actions/download-artifact@v4
+        with:
+          name: uImage
+          path: /home/analog/binaries/uImage
+
+      - name: Download devicetree
+        uses: actions/download-artifact@v4
+        with:
+          name: devicetree.dtb
+          path: /home/analog/binaries/devicetree.dtb
+
+      - name: uImage on Cora
+        run: |
+          sshpass -p '${{ secrets.ghita_emma_secret }}'
+          scp -o StrictHostKeyChecking=no /home/analog/binaries/uImage root@10.76.84.113:/boot/
+          sshpass -p '${{ secrets.ghita_emma_secret }}'
+          scp -o StrictHostKeyChecking=no  /home/analog/binaries/devicetree.dtb root@10.76.84.113:/boot/devicetree.dtb
