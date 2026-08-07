@@ -1,0 +1,43 @@
+name: My Workflow Teodor Morosanu
+
+on:
+  push:
+    branches: [teodor_morosanu_adc]
+
+jobs:
+  first-make-workflow:
+    runs-on: ubuntu-latest
+    
+    env:
+      ARCH: arm
+      CROSS_COMPILE: arm-linux-gnueabi-
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install tools (dependencies)
+        run: |
+          sudo apt-get -q update
+          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
+
+      - name: Make .dtb, uImage(kernel) and .config
+        run: |
+          make zynq_xcomm_adv7511_defconfig
+          make xilinx/zynq-coraz7s-ad5592r-s.dtb
+          make -j8 UIMAGE_LOADADDR=0x8000 uImage
+
+      - name: Upload .dtb
+        uses: actions/upload-artifact@v4
+        with:
+          name: deviceTree.dtb
+          path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+      - name: Upload uImage(kernel)
+        uses: actions/upload-artifact@v4
+        with:
+          name: uImage
+          path: arch/arm/boot/uImage
+
