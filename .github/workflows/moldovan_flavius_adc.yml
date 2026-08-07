@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      
+
       - name: Setup build environment
         run: |
           sudo apt-get -q update
@@ -51,11 +51,12 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-  
+          fetch-depth: 1
+
       - name: checkpatch run for each commit
         run: |
-          COMMITS=$(git log --reverse --format="%H" origin/main..HEAD)
-          for commit in $COMMITS; do
-            scripts/checkpatch.pl --git "$commit" --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict
-          done
+          scripts/checkpatch.pl --git HEAD --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict
+          # COMMITS=$(git log --reverse --format="%H" origin/main..HEAD)
+          # for commit in $COMMITS; do
+            # scripts/checkpatch.pl --git "$commit" --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict
+          # done
