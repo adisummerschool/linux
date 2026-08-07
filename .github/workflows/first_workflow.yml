@@ -3,10 +3,15 @@ name: My Workflow Teodor Morosanu
 on:
   push:
     branches: [teodor_morosanu_adc]
+    paths:
+      - '.github/workflows/first_workflow.yml'
+      - 'drivers/iio/adc/**'
+      - 'arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r_s.dts'
+    workflow_dispatch:
 
 jobs:
   first-make-workflow:
-    runs-on: ubuntu-latest
+    runs-on: teodor_morosanu
     
     env:
       ARCH: arm
@@ -14,7 +19,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 1
 
@@ -30,14 +35,69 @@ jobs:
           make -j8 UIMAGE_LOADADDR=0x8000 uImage
 
       - name: Upload .dtb
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
-          name: deviceTree.dtb
+          name: devicetree.dtb
           path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
 
       - name: Upload uImage(kernel)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: uImage
           path: arch/arm/boot/uImage
+
+  my-first-checkpatch:
+    runs-on: teodor_morosanu
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          clean: false
+
+      - name: Checkpatch script
+        run: |
+          git fetch origin main
+          for commit in $(git rev-list --reverse origin/main..teodor_morosanu_adc); do
+          ./scripts/checkpatch.pl --git "$commit" \
+            --ignore FILE_PATH_CHANGES \
+            --ignore LONG_LINE \
+            --ignore LONG_LINE_STRING \
+            --ignore LONG_LINE_COMMENT \
+            --strict || true
+          done
+
+  build:
+    environment: summer_practice_secrets
+    runs-on: teodor_morosanu
+    needs: first-make-workflow
+
+    steps:
+      - name: Uploading on board devicetree
+        uses: actions/download-artifact@v6
+        with: 
+          name: devicetree.dtb
+          path: ./
+
+      - name: Uploading on board uImage
+        uses: actions/download-artifact@v6
+        with: 
+          name: uImage
+          path: ./
+      - run: |
+          sudo apt-get install -y sshpass
+          sshpass -p '${{ secrets.teodor_morosanu_secret }}' scp -o StrictHostKeyChecking=no uImage root@10.76.84.35:/boot/
+          sshpass -p '${{ secrets.teodor_morosanu_secret }}' scp -o StrictHostKeyChecking=no zynq-coraz7s-ad5592r-s.dtb root@10.76.84.35:/boot/devicetree.dtb
+          
+      - name: Reboot the Cora Z7
+        run: |
+          sshpass -p '${{ secrets.teodor_morosanu_secret }}' ssh \
+            -o StrictHostKeyChecking=no \
+            root@10.76.84.35 'sudo reboot'
+
+
+
+
+
 
