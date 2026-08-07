@@ -5,6 +5,23 @@ on:
    push:
       branches: [emilia_pedolu_adc_feature]
 
+checkpath:
+  runs-on: ubuntu-latest
+  steps:
+    - name: Checkout source
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Fetch main branch
+      run: git fetch origin main
+
+    - name: Run checkpath
+      run: |
+        for commit in $(git rev-list main..emilia_pedolu_adc_feature):do
+          scripts/checkpatch.pl --git "$commit" --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict;
+        done
+
 jobs:
    build-artifacts:
       runs-on: ubuntu-latest
