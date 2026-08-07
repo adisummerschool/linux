@@ -50,7 +50,7 @@ jobs:
           path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
 
   checkpatch:
-    runs-on: emmaghita
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout source
