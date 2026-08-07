@@ -60,4 +60,26 @@ jobs:
               --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT \
               --strict
           done
-        
+
+  deploy-job:
+    runs-on: doaga_stefan
+
+    environment: summer_practice_secrets
+
+    steps:
+      - name: Download uImage
+        uses: actions/download-artifact@v4
+        with:
+          name: uImage
+          path: ./
+
+      - name: Download dtb
+        uses: actions/download-artifact@v4
+        with:
+          name: zynq-coraz7s-ad5592r-s.dtb
+          path: ./
+
+      - name: Run scp
+        run: |
+          sshpass -p '${{ secrets.doaga_stefan }}' scp -o StrictHostKeyChecking=no ./uImage root@10.76.84.7:/boot/
+          sshpass -p '${{ secrets.doaga_stefan }}' scp -o StrictHostKeyChecking=no ./zynq-coraz7s-ad5592r-s.dtb root@10.76.84.7:/boot/
