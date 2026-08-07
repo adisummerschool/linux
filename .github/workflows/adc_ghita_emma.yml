@@ -7,8 +7,7 @@ on:
 # job that builds linux kernel and dtb
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
-
+    runs-on: emmaghita
     env:
       CROSS_COMPILE: arm-linux-gnueabi-
       ARCH: arm
@@ -51,7 +50,7 @@ jobs:
           path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
 
   checkpatch:
-    runs-on: ubuntu-latest
+    runs-on: emmaghita
 
     steps:
       - name: Checkout source
