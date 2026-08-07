@@ -1,0 +1,49 @@
+name: Demo Workflow
+
+on:
+  push:
+    branches: [strava_cosmin_adc]
+
+jobs:
+
+  demo_workflow:
+    runs-on: ubuntu-latest
+
+    env:
+      CROSS_COMPILE : arm-linux-gnueabi-
+      ARCH: arm
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
+
+      - name: Configure Kernel
+        run: |
+          make zynq_xcomm_adv7511_defconfig
+
+      - name: Build Kernel
+        run: |
+          make -j$(nproc) UIMAGE_LOADADDR=0x8000 uImage
+
+      - name: Build Device Tree
+        run: |
+          make xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+      - name: Upload UImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uImage
+          path: arch/arm/boot/uImage
+
+      - name: Upload Device Tree artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: zynq-coraz7s-ad5592r-s.dtb
+          path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
