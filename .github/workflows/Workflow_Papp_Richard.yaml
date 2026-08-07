@@ -65,4 +65,27 @@ jobs:
           for commit in $(git log origin/main..HEAD --format='%h');
             do
               scripts/checkpatch.pl --git "$commit" --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict;
-            done
+
+  where_we_dropin:
+    environment: summer_practice_secrets
+
+    needs: build_pyramids
+
+    runs-on: papp_richard
+
+    steps:
+      - name: Getting over it
+        uses: actions/download-artifact@v8
+        with:
+          name: uImage
+
+      - name: Getting ahead
+        uses: actions/download-artifact@v8
+        with:
+          name: devicetree.dtb
+
+      - name: Getting there
+        run: |
+          sshpass -p '${{ secrets.secret_of_papp_richard }}' scp -o StrictHostKeyChecking=no /home/analog/actions-runner/_work/linux/linux/zynq-coraz7s-ad5592r_s.dtb root@10.76.84.21:/boot/devicetree.dtb
+          sshpass -p '${{ secrets.secret_of_papp_richard }}' scp -o StrictHostKeyChecking=no /home/analog/actions-runner/_work/linux/linux/uImage root@10.76.84.21:/boot/
+
