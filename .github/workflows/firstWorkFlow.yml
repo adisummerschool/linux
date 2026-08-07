@@ -1,0 +1,118 @@
+
+name:  Marius_Trif_ADC
+
+on:
+  push:
+    branches: [marius_trif_adc]
+    paths:
+      - 'drivers/iio/adc/**'
+      - '.github/workflows/firstWorkFlow.yml'
+      - 'arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r_s.dts'
+
+jobs:
+  demo-artifacts:
+    runs-on: marius_trif
+
+    env:
+      CROSS_COMPILE: arm-linux-gnueabi-
+      ARCH: arm
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+        
+      - name: Install dependencies
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison \
+           libssl-dev u-boot-tools
+
+      - name: Produce element
+        run:
+          make zynq_xcomm_adv7511_defconfig
+
+      - name: Produce uImage
+        run:
+          make -j14 UIMAGE_LOADADDR=0x8000 uImage
+
+      - name: Produce device tree
+        run:
+          make xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+      - name: Produce artifact
+        run: |
+          echo "Summer Practice" > artifact.txt
+          echo ${{ github.sha }} >> artifact.txt
+          echo "$CROSS_COMPILE" >> artifact.txt
+          echo "$ARCH" >> artifact.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uImage
+          path: arch/arm/boot/uImage
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: devicetree.dtb
+          path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+  demo-checkpach:
+    runs-on: marius_trif
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean : false
+        
+      - name: Install dependencies
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison \
+           libssl-dev u-boot-tools
+
+      - name: Produce git command 
+        run: |
+          git fetch origin main
+          for commit in $(git rev-list --reverse origin/main..HEAD); do
+            ./scripts/checkpatch.pl --git "$commit" \
+              --ignore FILE_PATH_CHANGES \
+              --ignore LONG_LINE \
+              --ignore LONG_LINE_STRING \
+              --ignore LONG_LINE_COMMENT \
+              --strict || true
+          done
+
+      - name: Produce artifact
+        run: |
+          echo "Summer Practice" > artifact1.txt
+          echo ${{ github.sha }} >> artifact1.txt
+
+  deploy:
+    needs: demo-artifacts
+    environment: summer_practice_secrets
+    runs-on: marius_trif
+
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          path: ./
+      - name: Display structure of downloaded files
+        run: ls -l ./
+
+      - name: Put device tree and uImage on coraz7s
+        run: |
+          sshpass -p '${{ secrets.marius_trif_secret }}' scp -o StrictHostKeyChecking=no ./uImage/uImage root@10.76.84.120:/boot/
+          sshpass -p '${{ secrets.marius_trif_secret }}' scp -o StrictHostKeyChecking=no ./devicetree.dtb/zynq-coraz7s-ad5592r-s.dtb root@10.76.84.120:/boot/devicetree.dtb
+          sshpass -p '${{ secrets.marius_trif_secret }}' ssh -o StrictHostKeyChecking=no root@10.76.84.120 'sudo reboot' 
+          sleep 40
+          ping -W 5 10.76.84.120 -c 5
+
+
+
+

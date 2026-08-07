@@ -1,0 +1,12 @@
+name: CI
+
+on:
+  push:
+    branches: [marius_trif_adc]
+    
+jobs:
+        build:
+                runs-on: marius_trif
+                container: tmariusd23/hello_docker
+                steps:
+                        - run: hello
