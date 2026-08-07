@@ -5,50 +5,48 @@ name : Papp Richard Workflow
 on:
   push:
     branches: [PappRichard_ADC]
-    
 jobs:
 
   build_pyramids:
-    
-    runs-on : ubuntu-latest
+    runs-on : papp_richard
 
     env:
       CROSS_COMPILE: arm-linux-gnueabi-
       ARCH: arm
 
-    steps: 
+    steps:
 
       - name: Checkout branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      
+
       - name: Install dependencies
         run: |
           sudo apt-get -q update
           sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
-      
-      - name: Configure the enviroment
+
+      - name: Configure the environment
         run: |
           make zynq_xcomm_adv7511_defconfig
-      
+
       - name: Build the image
         run: |
-          make -j14 UIMAGE_LOADADDR=0x8000 uImage
-      
+          make -j$(nproc) UIMAGE_LOADADDR=0x8000 uImage
+
       - name: Build the devicetree
         run: |
           make xilinx/zynq-coraz7s-ad5592r_s.dtb
-      
+
       - name: Mark it in hieroglyphs
         uses: actions/upload-artifact@v4
-        with: 
+        with:
           name: uImage
           path: arch/arm/boot/uImage
-        
+
       - name: Paint the papyruses
         uses: actions/upload-artifact@v4
-        with: 
+        with:
           name: devicetree.dtb
           path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r_s.dtb
 
