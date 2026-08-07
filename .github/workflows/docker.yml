@@ -1,0 +1,9 @@
+name: docker_container_adc
+on:
+  push:
+    branches: [ Molnar_Levente_adc ]
+jobs:
+  build:
+    runs-on: Molnar_Levente_adc_7
+    steps:
+      - run: ls
