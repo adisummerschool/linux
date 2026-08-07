@@ -1,0 +1,42 @@
+name: Dradici Leon ADC
+
+on:
+  push:
+    branches: [dradici_leon_adc]
+
+jobs:
+  demo-dl-adc:
+      runs-on: ubuntu-latest
+
+      steps:
+        - name: Checkout source
+          uses: actions/checkout@v4
+          with:
+            fetch-depth: 1
+
+        - name: Install tools
+          run: |
+            sudo apt-get -qq update
+            sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
+
+        - name: Exports and makes
+          run: |
+            export ARCH=arm
+            export CROSS_COMPILE=arm-linux-gnueabi-
+            make zynq_xcomm_adv7511_defconfig
+            make xilinx/zynq-coraz7s-ad5592r-s.dtb
+            make -j14 UIMAGE_LOADADDR=0x8000 uImage
+
+        - name: Upload .dtb files
+          uses: actions/upload-artifact@v4
+          with:
+            name: devicetree.dtb
+            path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+        - name: Upload uImage
+          uses: actions/upload-artifact@v4
+          with:
+            name: uImage
+            path: arch/arm/boot/uImage 
+
+        
