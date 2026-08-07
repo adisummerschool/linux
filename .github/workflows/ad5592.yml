@@ -1,0 +1,48 @@
+name: cucu_maria_ADC
+
+on:
+   push:
+       branches: [ cucu_maria_adc ]
+
+
+jobs:
+ build-linux:
+   runs-on: ubuntu-latest
+
+   env:
+     CROSS_COMPILE: arm-linux-gnueabi-
+     ARCH: arm
+
+   steps:   
+     - name: Checkout source
+       uses: actions/checkout@v4
+       with:
+         fetch-depth: 1
+
+     - name: Install dependencies
+       run: |
+         sudo apt-get -q update
+         sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
+        
+     - name: Produce artifact
+       run: |
+         make zynq_xcomm_adv7511_defconfig
+         make -j5 UIMAGE_LOADADDR=0x8000 uImage
+
+     - name: Produce devicetree
+       run: |
+         make xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+     - name: Upload artifact
+       uses: actions/upload-artifact@v4
+       with:
+         name: uImage
+         path: arch/arm/boot/uImage
+
+     - name: Upload devicetree
+       uses: actions/upload-artifact@v4
+       with:
+         name: devicetree.dtb
+         path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+        
