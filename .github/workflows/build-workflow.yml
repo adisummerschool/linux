@@ -1,0 +1,87 @@
+name: Denisa Dersedan ADC
+
+on:
+  push:
+    branches: [ denisa_dersedan_adc ]
+
+jobs:
+  build-artifacts:
+    runs-on: denisa_dersedan
+
+    env:
+      CROSS_COMPILE: arm-linux-gnueabi-
+      ARCH: arm
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
+
+      - name: Build config
+        run: |
+          make zynq_xcomm_adv7511_defconfig
+
+      - name: Build kernel
+        run: |
+          make -j$(nproc) UIMAGE_LOADADDR=0x8000 uImage
+
+      - name: Build dtb
+        run: |
+          make xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+      - name: Upload uImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: uImage
+          path: arch/arm/boot/uImage
+
+      - name: Upload dtb
+        uses: actions/upload-artifact@v4
+        with:
+          name: zynq-coraz7s-ad5592r-s.dtb
+          path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+  run_checkpatch:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find all commits and checkpatch them
+        run: |
+          git fetch origin main
+          for commit in $(git log --format=%H HEAD --not origin/main); do
+            scripts/checkpatch.pl --git "$commit" --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict
+          done
+  
+  deploy:
+    runs-on: denisa_dersedan
+    environment: summer_practice_secrets
+    needs: build-artifacts
+    steps:
+      - name: Download uImage
+        uses: actions/download-artifact@v4
+        with:
+          name: uImage
+      
+      - name: Download dtb
+        uses: actions/download-artifact@v4
+        with:
+          name: zynq-coraz7s-ad5592r-s.dtb
+      
+      - name: Push uImage to board
+        run: |
+          sshpass -p '${{ secrets.denisa_dersedan }}' scp -o StrictHostKeyChecking=no uImage root@10.76.84.20:/boot/
+      
+      - name: Push dtb file to board
+        run: |
+          sshpass -p '${{ secrets.denisa_dersedan }}' scp -o StrictHostKeyChecking=no zynq-coraz7s-ad5592r-s.dtb root@10.76.84.20:/boot/devicetree.dtb
