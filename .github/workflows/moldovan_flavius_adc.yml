@@ -6,7 +6,7 @@ on:
 
 jobs:
   build_uImage_and_dtb:
-    runs-on: ubuntu-latest
+    runs-on: moldovan_flavius
 
     env:
       CROSS_COMPILE: arm-linux-gnueabi-
@@ -51,7 +51,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
 
       - name: checkpatch run for each commit
         run: |
