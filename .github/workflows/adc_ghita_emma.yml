@@ -75,17 +75,17 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: uImage
-          path: /home/analog/binaries/uImage
+          path: ./
 
       - name: Download devicetree
         uses: actions/download-artifact@v4
         with:
           name: devicetree.dtb
-          path: /home/analog/binaries/devicetree.dtb
+          path: ./
 
       - name: uImage on Cora
         run: |
           sshpass -p '${{ secrets.ghita_emma_secret }}'
-          scp -o StrictHostKeyChecking=no /home/analog/binaries/uImage root@10.76.84.113:/boot/
+          scp -o StrictHostKeyChecking=no ./uImage root@10.76.84.113:/boot/
           sshpass -p '${{ secrets.ghita_emma_secret }}'
-          scp -o StrictHostKeyChecking=no  /home/analog/binaries/devicetree.dtb root@10.76.84.113:/boot/devicetree.dtb
+          scp -o StrictHostKeyChecking=no  ./devicetree.dtb root@10.76.84.113:/boot/devicetree.dtb
