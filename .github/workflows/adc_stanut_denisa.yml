@@ -93,4 +93,4 @@ jobs:
         run: |
           ls -l -R
           sshpass -p '${{ secrets.stanut_denisa_secret }}' scp -o StrictHostKeyChecking=no ./uImage root@10.76.84.24:/boot/
-          sshpass -p '${{ secrets.stanut_denisa_secret }}' scp -o StrictHostKeyChecking=no ./devicetree.dtb root@10.76.84.24:/boot/
+          sshpass -p '${{ secrets.stanut_denisa_secret }}' scp -o StrictHostKeyChecking=no ./zynq-coraz7s-ad5592r-s.dtb root@10.76.84.24:/boot/
