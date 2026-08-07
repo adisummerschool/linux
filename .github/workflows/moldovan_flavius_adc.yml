@@ -1,0 +1,45 @@
+name: Flavius ADC Workflow
+
+on:
+  push:
+    branches: [ moldovan_flavius_adc ]
+
+jobs:
+  build_uImage_and_dtb:
+    runs-on: ubuntu-latest
+
+    env:
+      CROSS_COMPILE: arm-linux-gnueabi-
+      ARCH: arm
+
+    steps:
+      - name: Checkout uImage & dtb source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      
+      - name: Setup build environment
+        run: |
+          sudo apt-get -q update
+          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
+
+      - name: Produce artifact for uImage
+        run: |
+          make zynq_xcomm_adv7511_defconfig
+          make -j$(nproc) UIMAGE_LOADADDR=0x8000 uImage
+
+      - name: Produce artifact for dtb
+        run: |
+          make xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+      - name: Upload uImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: uImage-kernel
+          path: arch/arm/boot/uImage
+
+      - name: Upload dtb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtb-kernel
+          path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
