@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      CROSS_COMPILE: arm-none-linux-gnueabihf-
+      CROSS_COMPILE: arm-linux-gnueabi-
       ARCH: arm
 
     steps:
