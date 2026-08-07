@@ -44,7 +44,7 @@ jobs:
           name: zynq-coraz7s-ad5592r-s.dtb
           path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
 
-  build-job:
+  checkpatch:
     runs-on: ubuntu-latest
 
     steps:
