@@ -1,0 +1,118 @@
+
+name: helmut_adc
+
+on:
+  push:
+    branches: [klampfl_helmut_adc]
+    paths:
+      - 'drivers/iio/adc/*'
+      - '.github/workflows/workflow.yml'
+      - 'arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb'
+
+jobs:
+  build_artifacts:
+    runs-on:
+      klampfl_helmut
+
+    env:
+      CROSS_COMPILE: arm-linux-gnueabi- #arm-none-linux-gnueabihf-
+      ARCH: arm
+      
+    steps:
+      - name: checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+    
+      - name: install toolchain
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
+
+      - name: produce artifact
+        run: |
+          echo "Summer Practice" > artifact.txt
+          echo ${{ github.sha }} >> artifact.txt
+          echo "$CROSS_COMPILE" >> artifact.txt
+          echo "$ARCH" >> artifact.txt
+
+      - name: produce make
+        run: |
+          make zynq_xcomm_adv7511_defconfig
+          make -j5 UIMAGE_LOADADDR=0x8000 uImage
+          make xilinx/zynq-coraz7s-ad5592r-s.dtb
+        
+      - name: upload uImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: uImage
+          path: arch/arm/boot/uImage
+
+      - name: upload dtb
+        uses: actions/upload-artifact@v4
+        with:
+          name: devicetree.dtb
+          path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
+
+  check_patch:
+    runs-on: klampfl_helmut
+
+    steps:
+      - name: checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          clean: false
+
+      - name: run checkpatch
+        run: |
+          git fetch origin main
+
+          failed=0
+          for commit in $(git rev-list --reverse origin/main..HEAD); do
+            echo "Checking $commit"
+            scripts/checkpatch.pl --git "$commit" \
+              --ignore FILE_PATH_CHANGES \
+              --ignore LONG_LINE \
+              --ignore LONG_LINE_STRING \
+              --ignore LONG_LINE_COMMENT \
+              --strict || failed=1
+          done
+          exit $failed
+  
+  build:
+    runs-on:
+     klampfl_helmut
+    needs: build_artifacts
+    environment: summer_practice_secrets
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: uImage
+          path: out/
+
+      - name: upload uImage
+        run: |
+          ls -a out/
+          sudo apt-get install -y sshpass
+          sshpass -p '${{ secrets.klampfl_helmut }}' scp -o StrictHostKeyChecking=no\
+           out/uImage root@10.76.84.14:/boot/
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: devicetree.dtb
+          path: out/
+
+      - name: upload devicetree.dtb
+        run: |
+          ls -a out/
+          sshpass -p '${{ secrets.klampfl_helmut }}' scp -o StrictHostKeyChecking=no\
+           out/zynq-coraz7s-ad5592r-s.dtb root@10.76.84.14:/boot/devicetree.dtb
+
+
+
+          
+
+      
+
