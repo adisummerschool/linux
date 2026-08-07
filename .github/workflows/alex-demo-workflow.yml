@@ -13,6 +13,8 @@ jobs:
       CROSS_COMPILE: arm-linux-gnueabi-
       
     steps:
+      - run: whoami && exit 1
+
       - name: Install dependencies
         run: |
           sudo apt-get -qq update
