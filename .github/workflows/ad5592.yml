@@ -3,11 +3,15 @@ name: cucu_maria_ADC
 on:
    push:
        branches: [ cucu_maria_adc ]
+       paths:
+       - 'drivers/iio/adc/**'
+       - '.github/workflows/ad5592.yml'
+       - 'arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r_s.dts'
 
 
 jobs:
   build-linux:
-    runs-on: ubuntu-latest
+    runs-on: cucu_maria
 
     env:
      CROSS_COMPILE: arm-linux-gnueabi-
@@ -46,18 +50,50 @@ jobs:
           path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
 
   Checkpatch: 
-    runs-on: ubuntu-latest   
+    runs-on: cucu_maria 
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          clean: false
 
       - name: Checkpatch
         run: |   
-          for commit in "$(git log cucu_maria_adc --not main --oneline --format='%h')"; do
+          for commit in $(git log cucu_maria_adc --not main --oneline --format="%h"); do
             scripts/checkpatch.pl --git "$commit" --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict
           done
+
+  Binaries:
+    runs-on: cucu_maria
+
+    environment: summer_practice_secrets
+
+    needs: [ build-linux ]
+
+    steps:  
+      - name: Download uImage
+        uses: actions/download-artifact@v4
+        with:
+          name: uImage
+          path: ./
+
+      - name: Download dtb
+        uses: actions/download-artifact@v4
+        with:
+          name: devicetree.dtb
+          path: ./
+
+      - name: Download scp
+        run: |
+         sshpass -p '${{ secrets.lefromage4 }}' scp -o StrictHostKeyChecking=no ./uImage root@10.76.84.9:/boot/
+         sshpass -p '${{ secrets.lefromage4 }}' scp -o StrictHostKeyChecking=no ./xilinx/zynq-coraz7s-ad5592r-s.dtb root@10.76.84.9:/boot/
+
+      - name: Reboot on Cora 
+        run: |
+         sshpass -p '${{ secrets.lefromage4 }}' ssh -o StrictHostKeyChecking=no root@10.76.84.9 'reboot'      
+        
+
 
         
