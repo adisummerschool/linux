@@ -1,27 +1,28 @@
-name: Alexandru Iordache ADC
+name: sorin test workflow
 
 on:
   push:
-    branches: alexandru_iordache_adc
+    branches: sorin_test
+  workflow_dispatch:
 
 jobs:
   alex-workflow:
-    runs-on: alexandru_iordache
+    runs-on: sorin
 
     env:
       ARCH: arm
       CROSS_COMPILE: arm-linux-gnueabi-
       
     steps:
-      - name: Install dependencies
-        run: |
-          sudo apt-get -qq update
-          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
-
       - name: Checkout source
         uses: actions/checkout@v7
         with:
           fetch-depth: 1
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison libssl-dev u-boot-tools
 
       - name: Make defconfig
         run: make zynq_xcomm_adv7511_defconfig
@@ -30,7 +31,7 @@ jobs:
         run: make xilinx/zynq-coraz7s-ad5592r_s.dtb 
 
       - name: Make uImage
-        run: make -j14 UIMAGE_LOADADDR=0x8000 uImage
+        run: make -j$(nproc) UIMAGE_LOADADDR=0x8000 uImage
       
       - name: Upload dtb artifact
         uses: actions/upload-artifact@v7
@@ -45,13 +46,14 @@ jobs:
           path: arch/arm/boot/uImage
 
   alex-checkpatch:
-    runs-on: ubuntu-latest
+    runs-on: sorin
 
     steps:
       - name: Checkout source
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          clean: false
 
       - name: Fetch main
         run: git fetch origin main
@@ -59,15 +61,16 @@ jobs:
       - name: Run checkpatch script on commits
         run: |
           for commit in $(git rev-list  origin/main..HEAD); do
-          scripts/checkpatch.pl --git "$commit" --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict
+            scripts/checkpatch.pl --git "$commit" --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict
           done
 
   copy-to-coraz7s:
     # bind the job to the environment
     environment: summer_practice_secrets
-    runs-on: alexandru_iordache
+    runs-on: sorin
     needs: alex-workflow
     steps:
+      - run: exit 1
       - name: Download devicetree
         uses: actions/download-artifact@v7
         with:
