@@ -11,7 +11,7 @@ on:
 
 jobs:
   demo-artifacts:
-    runs-on: mascasan_maya
+    runs-on: mascasan_maya_4
 
     env:
       CROSS_COMPILE: arm-linux-gnueabi-
@@ -23,12 +23,6 @@ jobs:
         with:
           fetch-depth: 1
         
-      - name: Install dependencies
-        run: |
-          sudo apt-get -qq update
-          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison \
-           libssl-dev u-boot-tools
-
       - name: Produce element
         run:
           make zynq_xcomm_adv7511_defconfig
@@ -61,7 +55,7 @@ jobs:
           path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
 
   demo-checkpach:
-    runs-on: mascasan_maya_2
+    runs-on: mascasan_maya_4
 
     steps:
       - name: Checkout source
@@ -78,15 +72,7 @@ jobs:
 
       - name: Produce git command 
         run: |
-          git fetch origin main
-          for commit in $(git rev-list --reverse origin/main..HEAD); do
-            ./scripts/checkpatch.pl --git "$commit" \
-              --ignore FILE_PATH_CHANGES \
-              --ignore LONG_LINE \
-              --ignore LONG_LINE_STRING \
-              --ignore LONG_LINE_COMMENT \
-              --strict || true
-          done
+          scripts/checkpatch.pl --git HEAD --ignore FILE_PATH_CHANGES --ignore LONG_LINE --ignore LONG_LINE_STRING --ignore LONG_LINE_COMMENT --strict
 
       - name: Produce artifact
         run: |
