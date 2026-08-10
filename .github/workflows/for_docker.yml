@@ -1,6 +1,8 @@
 name: CI
 
-on: [ adc_ghita_emma ]
+on:
+  push:
+    branches: [ adc_ghita_emma ]
 
 jobs:
   build:
