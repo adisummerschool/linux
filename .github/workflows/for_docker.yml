@@ -1,0 +1,10 @@
+name: CI
+
+on: [ adc_ghita_emma ]
+
+jobs:
+  build:
+    runs-on: emmaghita
+    container: emmaghita/hello_docker:latest
+    steps:
+      - run: ./hello
