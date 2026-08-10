@@ -1,0 +1,8 @@
+name: CI
+on: [push]
+jobs:
+  build:
+    runs-on: papp_richard
+    container: habivonrihi/hello_docker:latest
+    steps:
+      - run: /hello
