@@ -11,7 +11,7 @@ on:
 # job that builds linux kernel and dtb
 jobs:
   build-linux:
-    runs-on: emmaghita_dock
+    runs-on: emmaghita_tf
     env:
       CROSS_COMPILE: arm-linux-gnueabi-
       ARCH: arm
