@@ -1,0 +1,12 @@
+name : CI
+
+on:
+  push:
+    branches: [ stanut_denisa_adc ]
+
+jobs:
+  build:
+    runs-on: denisa_stanut
+    container: stanutdenisa/hello_docker:latest
+    steps:
+      - run: ./hello
