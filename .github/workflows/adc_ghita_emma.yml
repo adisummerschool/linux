@@ -83,7 +83,7 @@ jobs:
           name: devicetree.dtb
           path: ./
 
-      - name: uImage on Cora
+      - name: Deploy on Cora
         run: |
-          sshpass -p '${{ secrets.ghita_emma_secret }}' scp -o StrictHostKeyChecking=no ./uImage root@10.76.84.113:/boot/
-          sshpass -p '${{ secrets.ghita_emma_secret }}' scp -o StrictHostKeyChecking=no  ./devicetree.dtb root@10.76.84.113:/boot/devicetree.dtb
+          sshpass -p '${{ secrets.ghita_emma_secret }}' scp -o StrictHostKeyChecking=no uImage root@10.76.84.113:/boot/
+          sshpass -p '${{ secrets.ghita_emma_secret }}' scp -o StrictHostKeyChecking=no zynq-coraz7s-ad5592r-s.dtb root@10.76.84.113:/boot/devicetree.dtb
