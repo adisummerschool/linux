@@ -3,6 +3,10 @@ name: "ADC_emma_ghita"
 on:
   push:
     branches: [ adc_ghita_emma ]
+    paths:
+      - 'drivers/iio/adc/*'
+      - '.github/workflows/adc_ghita_emma.yml'
+      - 'arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dts'
 
 # job that builds linux kernel and dtb
 jobs:
@@ -56,6 +60,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          clean: false
 
       - name: Fetch main branch
         run: git fetch origin main
@@ -87,3 +92,7 @@ jobs:
         run: |
           sshpass -p '${{ secrets.ghita_emma_secret }}' scp -o StrictHostKeyChecking=no uImage root@10.76.84.113:/boot/
           sshpass -p '${{ secrets.ghita_emma_secret }}' scp -o StrictHostKeyChecking=no zynq-coraz7s-ad5592r-s.dtb root@10.76.84.113:/boot/devicetree.dtb
+
+      - name: Reboot on Cora
+        run: |
+          sshpass -p '${{ secrets.ghita_emma_secret }}' scp -o StrictHostKeyChecking=no root@10.76.84.113 'reboot'
