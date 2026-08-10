@@ -61,7 +61,7 @@ jobs:
           path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
 
   demo-checkpach:
-    runs-on: ubuntu-latest
+    runs-on: mascasan_maya_2
 
     steps:
       - name: Checkout source
