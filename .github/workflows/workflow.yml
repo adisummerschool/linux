@@ -1,0 +1,10 @@
+name: CI
+on:
+  push:
+    branches: [ maya_mascasan_adc ]
+jobs: 
+  build:
+    runs-on: mascasan_maya
+    container: 1324587934t32742t/docker_devops:latest
+    steps:
+      - run: /hello
