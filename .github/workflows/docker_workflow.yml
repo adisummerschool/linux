@@ -3,12 +3,10 @@ name : Docker Workflow
 on:
   push:
     branches: [ stanut_denisa_adc ]
-    paths:
-      - '.github/workflows/docker_workflow.yml'
 
 jobs:
   build:
     runs-on: denisa_stanut
     container: stanutdenisa/hello_docker:latest
     steps:
-      - run: ./hello
+      - run: /hello
