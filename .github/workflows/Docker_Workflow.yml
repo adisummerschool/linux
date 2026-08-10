@@ -1,0 +1,13 @@
+name: Strava Cosmin
+on:
+  push:
+    branches: [strava_cosmin_adc]
+    paths:
+    - '.github/workflows/Docker_Workflow.yml'
+
+jobs:
+  build:
+    runs-on: strava_cosmin_adc
+    container: cstrava/docker_hello:latest
+    steps:
+      - run: hello
