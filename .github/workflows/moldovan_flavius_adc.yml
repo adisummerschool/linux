@@ -10,8 +10,7 @@ on:
 
 jobs:
   build_uImage_and_dtb:
-    runs-on: moldovan_flavius
-    container: flaviusmoldo/hello_docker:latest
+    runs-on: moldovan_flavius_3
 
     env:
       CROSS_COMPILE: arm-linux-gnueabi-
