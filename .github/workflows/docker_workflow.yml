@@ -1,0 +1,11 @@
+name: CI
+on:
+  push:
+    branches: [berinde_codrin_adc]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: codrinberinde/hello_docker:latest
+    steps:
+      - run: /hello
