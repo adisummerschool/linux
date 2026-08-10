@@ -1,0 +1,10 @@
+name: CI
+on:
+  push:
+    branches: [ moldovan_flavius_adc ]
+jobs:
+  build:
+    runs-on: moldovan_flavius
+    container: flaviusmoldo/hello_docker:latest
+    steps:
+      - run: /hello
