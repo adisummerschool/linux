@@ -1,0 +1,14 @@
+name: My Docker Workflow Teodor Morosanu
+
+on:
+  push:
+    branches: [teodor_morosanu_adc]
+    paths:
+      - '.github/workflows/docker_workflow.yml'
+
+jobs: 
+  build: 
+    runs-on: teodor_morosanu
+    container: teodormorosanu/hello_docker:latest
+    steps:
+      - run: /hello
