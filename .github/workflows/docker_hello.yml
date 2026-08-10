@@ -1,0 +1,12 @@
+name: CI 
+
+on: 
+  push:
+    branches: [ cucu_maria_adc]
+
+jobs:
+  build:
+    runs-on: cucu_maria
+    container: maya11222/hello_docker:latest
+    steps:
+      -run: /hello
