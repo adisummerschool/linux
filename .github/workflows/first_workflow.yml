@@ -11,7 +11,7 @@ on:
 
 jobs:
   first-make-workflow:
-    runs-on: teodor_morosanu_special
+    runs-on: teodor_morosanu_terraform
     
     env:
       ARCH: arm
