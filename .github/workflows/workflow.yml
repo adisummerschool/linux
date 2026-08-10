@@ -7,8 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: tomescu_lucas_adc
-    container: tomesculucas/tomescu_lucas_adc_build:latest
+    runs-on: tomescu_lucas_adc_2
 
     env:
       ARCH: arm
@@ -87,7 +86,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: tomescu_lucas_adc
+    runs-on: tomescu_lucas_adc_2
 
     steps:
       - name: Check deploy dependencies
