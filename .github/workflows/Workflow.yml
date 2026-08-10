@@ -1,0 +1,11 @@
+name: CI
+on:
+  push:
+    branches: [emilia_pedolu_adc_feature]
+
+jobs:
+  build-binaries:
+    runs-on: ubuntu-latest
+    container: emiliapedolu/dockerhello:latest
+    steps:
+      - run: /hello

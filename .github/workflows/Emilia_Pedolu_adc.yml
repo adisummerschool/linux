@@ -69,48 +69,24 @@ jobs:
             name: upload_devicetree
             path: arch/arm/boot/dts/xilinx/zynq-coraz7s-ad5592r-s.dtb
    
-   display:
    deploy:
-   needs: build-artifacts
-   environment: summer_practice_secrets
-   runs-on: emiliapedolu
+      needs: build-artifacts
+      environment: summer_practice_secrets
+      runs-on: emiliapedolu
 
-   steps:
-     - uses: actions/download-artifact@v4
-       with:
-         path: ./
+      steps:
+         - uses: actions/download-artifact@v4
+           with:
+             path: ./
 
-     - name: Display structure of downloaded files
-       run: ls -l ./
+         - name: Display structure of downloaded files
+           run: ls -l ./
 
-     - name: Put device tree and uImage on coraz7s
-       run: |
-         sshpass -p '${{ secrets.emiliapedolu }}' scp -o StrictHostKeyChecking=no ./uImage-kernel/uImage root@10.76.84.05:/boot/
-         sshpass -p '${{ secrets.emiliapedolu }}' scp -o StrictHostKeyChecking=no ./dtb-kernel/zynq-coraz7s-ad5592r-s.dtb root@10.76.84.05:/boot/devicetree.dtb
+         - name: Put device tree and uImage on coraz7s
+           run: |
+             sshpass -p '${{ secrets.emiliapedolu }}' scp -o StrictHostKeyChecking=no ./uImage-kernel/uImage root@10.76.84.05:/boot/
+             sshpass -p '${{ secrets.emiliapedolu }}' scp -o StrictHostKeyChecking=no ./dtb-kernel/zynq-coraz7s-ad5592r-s.dtb root@10.76.84.05:/boot/devicetree.dtb
 
-     - name: Reboot the Cora Z7
-       run: |
-         sshpass -p '${{ secrets.emiliapedolu }}' ssh -o StrictHostKeyChecking=no root@10.76.84.04 'sudo reboot'
-
-
-    # runs-on: emiliapedolu
-    # environment: summer_practice_secrets
-    # needs: build-artifacts
-    # steps:
-    #    - name: Download uImage
-    #      uses: actions/download-artifact@v4
-    #      with:
-    #       name: uImage
-
-    #    - name: Download dtb
-    #      uses: actions/download-artifact@v4
-    #      with:
-    #       name: zynq-coraz7s-ad5592r-s.dtb
-
-    #    - name: Push uImage to board
-    #      run: |
-    #       sshpass -p '${{ secrets.emiliapedolu }}' scp -o StrictHostKeyChecking=no uImage root@10.76.84.05:/boot/
-
-    #    - name: Push dtb file to board
-    #      run: |
-    #       sshpass -p '${{ secrets.emiliapedolu }}' scp -o StrictHostKeyChecking=no zynq-coraz7s-ad5592r-s.dtb root@10.76.84.05:/boot/devicetree.dtb
+         - name: Reboot the Cora Z7
+           run: |
+             sshpass -p '${{ secrets.emiliapedolu }}' ssh -o StrictHostKeyChecking=no root@10.76.84.04 'sudo reboot'
