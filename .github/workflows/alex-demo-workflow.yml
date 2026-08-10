@@ -10,12 +10,7 @@ on:
 
 jobs:
   build-binaries:
-    runs-on: alexandru_iordache
-    container: burti/linux_container:latest
-
-    env:
-      ARCH: arm
-      CROSS_COMPILE: arm-linux-gnueabi-
+    runs-on: alex_docker
 
     steps:
 
@@ -52,8 +47,7 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v7
         with:
-          fetch-depth: 0
-          clean: false
+          fetch-depth: 10
 
       - name: Fetch main
         run: git fetch origin main

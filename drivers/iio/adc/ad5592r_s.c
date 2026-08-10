@@ -62,7 +62,7 @@ static int adc_ad5592r_s_write_raw(struct iio_dev *indio_dev,
 				   int val2, long mask)
 {
 	struct adc_ad5592r_s_st *st = iio_priv(indio_dev);
-	
+
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
 
@@ -188,7 +188,7 @@ static int ad5592r_s_probe(struct spi_device *spi)
 
 static struct spi_driver ad5592r_s_driver = {
     .driver = {
-        .name = "ad5592r_s",
+	.name = "ad5592r_s",
     },
     .probe = ad5592r_s_probe,
 };
