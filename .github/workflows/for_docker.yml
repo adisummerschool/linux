@@ -9,4 +9,4 @@ jobs:
     runs-on: emmaghita
     container: emmaghita/hello_docker:latest
     steps:
-      - run: ./hello
+      - run: /hello
