@@ -1,0 +1,12 @@
+name: docker_container_adc
+
+on:
+  push: 
+    branches: [klampfl_helmut_adc]
+
+jobs:
+  build:
+    runs-on: 
+      klampfl_helmut_docker
+    steps:
+      - run: ls -la
