@@ -8,10 +8,11 @@ on:
 jobs:
   build:
     runs-on: tomescu_lucas_adc
+    container: tomesculucas/tomescu_lucas_adc_build:latest
 
     env:
       ARCH: arm
-      CROSS_COMPILE: arm-linux-gnueabihf-
+      CROSS_COMPILE: arm-linux-gnueabi-
 
     steps:
       - name: Checkout repository
@@ -19,7 +20,7 @@ jobs:
 
       - name: Check build dependencies
         run: |
-          command -v arm-linux-gnueabihf-gcc
+          command -v arm-linux-gnueabi-gcc
           command -v make
           command -v bc
           command -v flex
