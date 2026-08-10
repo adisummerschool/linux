@@ -11,7 +11,7 @@ on:
 
 jobs:
   demo-artifacts:
-    runs-on: marius_trif
+    runs-on: marius_trif_docker1
 
     env:
       CROSS_COMPILE: arm-linux-gnueabi-
@@ -22,13 +22,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 1
-        
-      - name: Install dependencies
-        run: |
-          sudo apt-get -qq update
-          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison \
-           libssl-dev u-boot-tools
-
+      
       - name: Produce element
         run:
           make zynq_xcomm_adv7511_defconfig
@@ -62,20 +56,13 @@ jobs:
 
   demo-checkpach:
     runs-on: marius_trif
-
-    steps:
+    steps:        
       - name: Checkout source
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           clean : false
         
-      - name: Install dependencies
-        run: |
-          sudo apt-get -qq update
-          sudo apt-get install -y gcc-arm-linux-gnueabi make bc flex bison \
-           libssl-dev u-boot-tools
-
       - name: Produce git command 
         run: |
           git fetch origin main
@@ -112,7 +99,5 @@ jobs:
           sshpass -p '${{ secrets.marius_trif_secret }}' ssh -o StrictHostKeyChecking=no root@10.76.84.120 'sudo reboot' 
           sleep 40
           ping -W 5 10.76.84.120 -c 5
-
-
 
 
