@@ -1,0 +1,14 @@
+name: Dradici Leon Docker
+
+on:
+  push:
+    branches: [dradici_leon_adc]
+    paths: 
+      - '.github/workflows/docker_workflow.yml'
+
+jobs:
+  build:
+    runs-on: dradici_leon
+    container: dradicileon/hello_docker:latest
+    steps:
+      - run: /hello
