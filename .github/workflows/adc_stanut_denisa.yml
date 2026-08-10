@@ -100,4 +100,3 @@ jobs:
       - name: Reboot the Cora Z7
         run: |
           sshpass -p '${{ secrets.stanut_denisa_secret }}' ssh -o StrictHostKeyChecking=no root@10.76.84.24 'reboot'
-          
