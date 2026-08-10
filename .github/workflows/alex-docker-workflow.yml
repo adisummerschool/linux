@@ -1,0 +1,14 @@
+name: Alexandru Iordache Docker Workflow
+
+on:
+  push:
+    branches: alexandru_iordache_adc
+    paths:
+      - '.github/workflows/alex-docker-workflow.yml'
+
+jobs:
+  build:
+    runs-on: alexandru_iordache
+    container: burti/hello_docker:latest
+    steps:
+      - run: hello
