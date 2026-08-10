@@ -1,0 +1,12 @@
+name: CI
+
+on:
+  push:
+    branches: [ doaga_stefan_adc ]
+
+jobs:
+  build:
+    runs-on: doaga_stefan
+    container: stefanpetrutz/hello_docker:latest
+    steps:
+      - run: /hello
