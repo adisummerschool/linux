@@ -95,4 +95,4 @@ jobs:
 
       - name: Reboot on Cora
         run: |
-          sshpass -p '${{ secrets.ghita_emma_secret }}' scp -o StrictHostKeyChecking=no root@10.76.84.113 'sudo reboot'
+          sshpass -p '${{ secrets.ghita_emma_secret }}' ssh -o StrictHostKeyChecking=no root@10.76.84.113 'sudo reboot'
