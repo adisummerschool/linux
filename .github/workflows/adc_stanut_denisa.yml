@@ -10,8 +10,7 @@ on:
 
 jobs:
   build-kernel:
-    runs-on: denisa_stanut
-    container: stanutdenisa/hello_docker:latest
+    runs-on: denisa_docker
 
     env:
       CROSS_COMPILE: arm-linux-gnueabi-
