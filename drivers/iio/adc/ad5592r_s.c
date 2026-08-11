@@ -6,14 +6,96 @@
  * Copyright 2026 Trif Marius Andrei
  */
 
+#include <linux/unaligned.h>
 #include <linux/module.h>
 #include <linux/spi/spi.h>
 #include <linux/iio/iio.h>
+#include <linux/bitfield.h>
+
+
+#define ADC_RDWR_MSK 		BIT(15)
+#define ADC_ADDR_MSK 		GENMASK(14, 11)
+#define ADC_DATA_MSK 		GENMASK(10, 0)
+#define ADC_REG_EN_IREF 	BIT(9)
+#define ADC_REG_POWER_ADDRES 	0xB
+
+#define ADC_REG_RDB_ADDR 	0x7
+#define ADC_EN_BIT_MSK		BIT(6)
+#define ADC_REG_RD_MSK		GENMASK(5, 2)
+
+#define ADC_POWER_REG 		0x02
+#define ADC_POWER_ENABLE	0x0
+#define ADC_POWER_DISABLE	0x20
+
 
 struct iio_adc_placa_st {
+	struct spi_device *spi;
 	bool reg_select;
 	int chan_val[6];
 };
+
+static int iio_adc_placa_spi_write(struct iio_adc_placa_st *st, u8 addr, u16 data)
+{
+	u16 tx = 0;
+	u16 package = 0;
+
+	struct spi_transfer t = {
+		.tx_buf = &package,
+		.len = 2,
+	};
+	
+	tx = FIELD_PREP(ADC_RDWR_MSK, 0) | FIELD_PREP(ADC_ADDR_MSK, addr) | 
+	     FIELD_PREP(ADC_DATA_MSK, data);
+	
+
+	put_unaligned_be16(tx, &package);
+
+	dev_info(&st->spi->dev, "tx we constructed %x\n", tx);
+	dev_info(&st->spi->dev, "package we constructed %x\n", package);
+
+	return spi_sync_transfer(st->spi, &t, 1);
+}
+
+static int iio_adc_placa_spi_read(struct iio_adc_placa_st *st, u8 addr, u16 *data)
+{
+	u16 reg_rdb_data = 0;
+	u16 rx = 0;
+	int ret = 0;
+	u16 rcv_data = 0;
+
+	struct spi_transfer t = {.tx_buf = NULL, .rx_buf = &rx, .len = 2};
+	
+	reg_rdb_data = FIELD_PREP(ADC_EN_BIT_MSK, 1) |
+			FIELD_PREP(ADC_REG_RD_MSK, addr);
+	ret = iio_adc_placa_spi_write(st, ADC_REG_RDB_ADDR, reg_rdb_data);
+	
+	if (ret) {
+		dev_info(&st->spi->dev, "Spi readback transfer failed %d\n", ret);
+		return ret;
+	}
+
+	ret = spi_sync_transfer(st->spi, &t, 1);
+
+	if (ret) {
+		dev_info(&st->spi->dev, "Spi receiving transfer readback failed %d\n", ret);
+		return ret;
+	} 
+
+	rcv_data = get_unaligned_be16(&rx) ; 
+	*data = FIELD_GET(ADC_DATA_MSK, rcv_data);
+
+	return 0;
+}
+
+static int iio_adc_placa_debugfs_reg_access(struct iio_dev *indio_dev,
+					  unsigned reg, unsigned writeval,
+					  unsigned *readval)
+{
+	struct iio_adc_placa_st *st = iio_priv(indio_dev);
+	if (readval)
+		return iio_adc_placa_spi_read(st, reg, (u16 *)readval);
+	return iio_adc_placa_spi_write(st, reg, writeval);
+}
 
 static int iio_adc_placa_read_raw(struct iio_dev *indio_dev,
 				  struct iio_chan_spec const *chan, int *val,
@@ -90,10 +172,14 @@ static int iio_adc_placa_write_raw(struct iio_dev *indio_dev,
 		}else
 			return -EINVAL;
 	case IIO_CHAN_INFO_ENABLE:
-		if(val)
+		if (val){
 			st->reg_select = true;
-		else
-			st->reg_select = false;	
+			iio_adc_placa_spi_write(st, ADC_POWER_REG, ADC_POWER_DISABLE);
+		}
+		else{
+			st->reg_select = false;
+			iio_adc_placa_spi_write(st, ADC_POWER_REG, ADC_POWER_ENABLE);
+		}
 		return 0;
 	default:
 		return -EINVAL;
@@ -147,7 +233,8 @@ static const struct iio_chan_spec iio_adc_placa_channels[] = {
 
 static const struct iio_info iio_adc_placa_info = {
 	.read_raw = &iio_adc_placa_read_raw,
-	.write_raw = &iio_adc_placa_write_raw
+	.write_raw = &iio_adc_placa_write_raw,
+	.debugfs_reg_access = &iio_adc_placa_debugfs_reg_access,
 };
 
 ///Tot timpul se incepe cu functia de probe
@@ -164,8 +251,11 @@ static int iio_adc_placa_probe(struct spi_device *spi)
 	indio_dev = devm_iio_device_alloc(&spi->dev, sizeof(*st));
 
 	st = iio_priv(indio_dev);
+	st->spi = spi;
+	
 	memset(st->chan_val, 0, sizeof(st->chan_val));
 	st->reg_select = true;
+	iio_adc_placa_spi_write(st, ADC_REG_POWER_ADDRES, FIELD_PREP(ADC_REG_EN_IREF, 1));
 	indio_dev->name = "iio_adc_placa";
 	indio_dev->info = &iio_adc_placa_info;
 	indio_dev->channels = iio_adc_placa_channels;
