@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
 * Analog Devices AD5592R
-* 
+*
 * Copyright (C) 2025 Analog Devices, Inc
 */
 /dts-v1/;
@@ -13,6 +13,6 @@
 			reg = <0>;
 			spi-max-frequency = <10000000>;
 			compatible = "ad5592r_s";
-
+			spi-cpol;
 		};
 };
