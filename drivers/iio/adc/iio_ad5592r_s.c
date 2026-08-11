@@ -4,15 +4,92 @@
  *
  * Copyright 2011-2012 Analog Devices Inc.
  */
-
+ #include <linux/unaligned.h>
  #include <linux/module.h>
  #include <linux/spi/spi.h>
  #include <linux/iio/iio.h>
+ #include <linux/bitfield.h>
+
+ #define AD5592R_S_MSB_MSK BIT(15)
+ #define AD5592R_S_ADDR_MASK GENMASK(14, 11)
+ #define AD5592R_S_DATA_MASK GENMASK(10, 0)
+
+ #define AD5592R_REG_RDB_ADDR 0x7
+ #define AD5592R_EN_READB BIT(6)
+ #define AD5592R_REG_SELECT_RDB GENMASK(5, 2)
+
+ #define AD5592R_REG_PD_ADDR 0xB
+ #define AD5592R_REG_EN_IREF BIT(9)
 
  struct iio_ad5592r_s_st {
+     struct spi_device *spi;
      int reg_select;
      int chan_val[6];
  };
+
+ static int iio_ad5592r_s_spi_write(struct iio_ad5592r_s_st *st, u8 addr, u16 data)
+ {
+   u16 tx = 0;
+   u16 package = 0;
+   struct spi_transfer t = {
+      .tx_buf = &package,
+      .len = 2
+   };
+
+   tx = FIELD_PREP(AD5592R_S_MSB_MSK, 0) | FIELD_PREP(AD5592R_S_ADDR_MASK, addr)
+        | FIELD_PREP(AD5592R_S_DATA_MASK, data);
+        
+    put_unaligned_be16(tx, &package);
+
+    dev_info(&st->spi->dev, "SPI WRITE msg tx %x\n", tx);
+    dev_info(&st->spi->dev, "SPI WRITE msg package %x\n", package);
+
+    return spi_sync_transfer(st->spi, &t, 1);
+ }
+
+ static int iio_ad5592r_s_spi_read(struct iio_ad5592r_s_st *st, u8 addr, u16 *data)
+ {
+   u16 rx = 0;
+   u16 reg_rdb_data;
+   u16 rcv_data = 0;
+   int ret = 0;
+   struct spi_transfer t = {
+      .tx_buf = NULL,
+      .rx_buf = &rx,
+      .len = 2
+   };
+   reg_rdb_data = FIELD_PREP(AD5592R_EN_READB, 1) | FIELD_PREP(AD5592R_REG_SELECT_RDB, addr);
+   ret = iio_ad5592r_s_spi_write(st, AD5592R_REG_RDB_ADDR, reg_rdb_data);
+
+   if(ret){
+      dev_info(&st->spi->dev, "Writing the readback register failed %d\n", ret);
+      return ret;
+   }
+   ret = spi_sync_transfer(st->spi, &t, 1);
+   if (ret)
+   {
+    dev_info(&st->spi->dev, "Failed receiving readback");
+    return ret;
+   }
+   rcv_data = get_unaligned_be16(&rx);
+   *data = FIELD_GET(AD5592R_S_DATA_MASK, rcv_data);
+   
+   return 0;
+ }
+
+ 
+
+ static int iio_ad5592r_s_debugfs_reg_access(struct iio_dev *indio_dev,
+                                    unsigned reg, unsigned writeval,
+                                    unsigned *readval)
+  {
+   struct iio_ad5592r_s_st *st = iio_priv(indio_dev);
+
+   if(readval) {
+     return iio_ad5592r_s_spi_read(st, reg, (u16 *) readval);
+   }
+   return iio_ad5592r_s_spi_write(st, reg, writeval);
+  }                                  
 
  static int iio_ad5592r_s_read_raw(struct iio_dev *indio_dev,
                                struct iio_chan_spec const *chan,
@@ -95,8 +172,15 @@
             else 
                return -EINVAL;
         case IIO_CHAN_INFO_ENABLE:
-             st->reg_select = val ? 1 : 0;
-             return 0;   
+             if(val){
+             st->reg_select = 1;
+            
+           }
+           else {
+             st->reg_select = 0;
+          
+           }
+             return 0;        
       default:
              return -EINVAL;
    }
@@ -150,7 +234,9 @@
 };
  static const struct iio_info iio_ad5592r_s_info = {
         .read_raw = &iio_ad5592r_s_read_raw,
-        .write_raw = &iio_ad5592r_s_write_raw
+        .write_raw = &iio_ad5592r_s_write_raw,
+        .debugfs_reg_access = &iio_ad5592r_s_debugfs_reg_access
+
 
  };
  
@@ -164,11 +250,14 @@
 
     st = iio_priv(indio_dev);
     st->reg_select = 1;
+    st->spi = spi;
     memset(st->chan_val, 0, sizeof(st->chan_val));
     indio_dev->name = "iio_ad5592r_s";
     indio_dev->info = &iio_ad5592r_s_info;
     indio_dev->channels = iio_ad5592r_s_channels;
     indio_dev->num_channels = ARRAY_SIZE(iio_ad5592r_s_channels);
+
+    iio_ad5592r_s_spi_write(st, AD5592R_REG_PD_ADDR, FIELD_PREP(AD5592R_REG_EN_IREF, 1));
 
     return devm_iio_device_register(&spi->dev, indio_dev);
  }
