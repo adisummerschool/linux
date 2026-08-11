@@ -6,14 +6,88 @@
  * Copyright 2019 Renato Lui Geh
  */
 
+#include <linux/unaligned.h>
 #include <linux/module.h>
 #include <linux/spi/spi.h>
 #include <linux/iio/iio.h>
+#include <linux/bitfield.h>
+
+#define EMU_RW_MASK	BIT(7)
+#define EMU_ADDR_MASK	GENMASK(14,8)
+#define EMU_DATA_MASK	GENMASK(7,0)
+
+#define EMU_POWER_ON_REG	0x02
+#define EMU_POWER_EN	0x0
+#define EMU_POWER_DIS	0x20
 
 struct iio_adc_emu_st {
 	bool reg_selsect;
 	int chan_val[2];
+	struct spi_device *spi;
 };
+
+static int iio_adc_emu_spi_read(struct iio_adc_emu_st *st, u8 addr,
+				u8 *data)
+{
+	u8 tx = 0;
+	u8 rx = 0;
+	int ret = 0;
+
+	struct spi_transfer t[] = {
+		{
+			.tx_buf = &tx,
+			.len = 1
+		},
+		{
+			.rx_buf = &rx,
+			.len = 1
+		}
+	};
+
+	tx = FIELD_PREP(EMU_RW_MASK,1) | addr;
+
+	ret = spi_sync_transfer(st->spi,t,2);
+	if(ret){
+		dev_info(&st->spi->dev,"SPI read transfer failed %d\n",ret);
+		return ret;
+	}
+
+	*data = rx;
+	return 0;
+}
+
+static int iio_adc_emu_spi_write(struct iio_adc_emu_st *st, u8 addr, u8 data)
+{
+	u16 tx = 0;
+	u16 package = 0;
+
+	struct spi_transfer t= {
+		.tx_buf = &package,
+		.len = 2
+	};
+
+	tx = FIELD_PREP(EMU_RW_MASK,0) | FIELD_PREP(EMU_ADDR_MASK,addr)
+		| FIELD_PREP(EMU_DATA_MASK, data);
+
+	put_unaligned_be16(tx,&package);
+
+	dev_info(&st->spi->dev,"Tx constructed: %x\n",tx);
+	dev_info(&st->spi->dev,"Package we transferred: %x\n",package);
+
+	return spi_sync_transfer(st->spi,&t,1);
+}
+
+static int iio_adc_emu_debugfs_reg_access(struct iio_dev *indio_dev,
+				  unsigned reg, unsigned writeval,
+				  unsigned *readval)
+{
+	struct iio_adc_emu_st *st= iio_priv(indio_dev);
+
+	if(readval)
+		return iio_adc_emu_spi_read(st,reg,(u8 *)readval);
+
+	return iio_adc_emu_spi_write(st,reg,writeval);
+}
 
 static int iio_adc_emu_read_raw(struct iio_dev *indio_dev,
 	                        struct iio_chan_spec const *chan, int *val,
@@ -60,7 +134,14 @@ static int iio_adc_emu_write_raw(struct iio_dev *indio_dev,
 		} else
 			return -EINVAL;
 	case IIO_CHAN_INFO_ENABLE:
-		st->reg_selsect = val ? 1 : 0;
+		if(val){
+			st->reg_selsect = 1;
+			iio_adc_emu_spi_write(st,EMU_POWER_ON_REG,EMU_POWER_DIS);
+		}
+		else{
+			st->reg_selsect = 0;
+			iio_adc_emu_spi_write(st,EMU_POWER_ON_REG,EMU_POWER_EN);
+		}
 		return 0;
 	default:
 		return -EINVAL;
@@ -87,6 +168,7 @@ static const struct iio_chan_spec iio_adc_emu_chanels[] = {
 static const struct iio_info iio_adc_emu_info = {
 	.read_raw = &iio_adc_emu_read_raw,
 	.write_raw = &iio_adc_emu_write_raw,
+	.debugfs_reg_access = &iio_adc_emu_debugfs_reg_access,
 };
 
 static int iio_adc_emu_probe(struct spi_device *spi)
@@ -105,6 +187,7 @@ static int iio_adc_emu_probe(struct spi_device *spi)
 	st = iio_priv(indio_dev);
 	st->reg_selsect = 1;
 	memset(st->chan_val, 0, sizeof(st->chan_val));
+	st->spi = spi;
 
 	return devm_iio_device_register(&spi->dev, indio_dev);
 }
