@@ -5,14 +5,93 @@
  * Copyright 2025 Analog Devices Inc.
  */
 
+ #include <linux/unaligned.h>
+ #include <linux/bitfield.h>
  #include <linux/module.h>
  #include <linux/spi/spi.h>
  #include <linux/iio/iio.h>
 
+ #define EMU_RDWR_MASK BIT(7)
+ #define EMU_ADDR_MASK GENMASK(14, 8)
+ #define EMU_DATA_MASK GENMASK(7, 0)
+
+ #define EMU_POWER_DISABLE 0x20
+ #define EMU_POWER_ENABLE 0x0
+ #define EMU_POWER_REG 0x02
+
  struct iio_adc_emu_st {
 	int reg_select;
 	int chan_val[2];
+	struct spi_device *spi;
  }; 
+
+ static int iio_adc_emu_spi_read(struct iio_adc_emu_st *st, u8 addr, u8 *data)
+ {
+	u8 tx = 0;
+	u8 rx = 0;
+	int ret = 0;
+ 	struct spi_transfer t[] = {
+ 		{
+ 			.tx_buf = &tx, 
+ 			.len = 1, //pentru ca vrem sa trimitem doar adresa
+ 		},
+ 		{
+ 			.rx_buf = &rx,
+ 			.len = 1,
+ 		},
+ 	};
+
+	tx = FIELD_PREP(EMU_RDWR_MASK, 1) | addr; //setam bitul de read/write pe 1 pentru a citi si adresa pe care vrem sa o citim
+	
+ 	ret = spi_sync_transfer(st->spi, t, 2); //trimitem datele prin spi, 2 pentru ca avem 2 structuri de tip transfer
+
+	if(ret)
+	{
+		dev_info(&st->spi->dev, "SPI READ transfer failed");
+		return ret;
+	}
+
+	*data = rx; //extragem datele din rx
+	return 0; 
+ }
+
+ static int iio_adc_emu_spi_write(struct iio_adc_emu_st *st, u8 addr, u8 data)
+ {
+	u16 tx = 0;
+	u16 package = 0;
+
+ 	struct spi_transfer t = {
+ 		.tx_buf = &package,
+ 		.len = 2, //pentru ca vrem sa trimitem adresa si date
+ 	};
+
+	tx = FIELD_PREP(EMU_RDWR_MASK, 0) | FIELD_PREP(EMU_ADDR_MASK, addr)
+		 | FIELD_PREP(EMU_DATA_MASK, data); 
+
+	put_unaligned_be16(tx, &package); //convertim datele in big endian pentru a fi trimise prin spi
+
+	dev_info(&st->spi->dev, "tx we constructed: %x\n", tx);
+	dev_info(&st->spi->dev, "package we constructed: %x\n", package);
+
+ 	return spi_sync_transfer(st->spi, &t, 1); //trimitem datele prin spi, 1 pentru ca avem 1 structura de tip transfer
+
+ }
+
+ static int iio_adc_emu_debugfs_reg_access(struct iio_dev *indio_dev, unsigned reg, 
+											unsigned writeval, 
+											unsigned *readval)
+ {
+	struct iio_adc_emu_st *st = iio_priv(indio_dev);
+
+	if (readval) {
+		return iio_adc_emu_spi_read(st, reg, (u8 *) readval);
+	}
+	else {
+		return iio_adc_emu_spi_write(st, reg, writeval);
+	}
+	
+ }
+
 
 
  static int iio_adc_emu_read_raw(struct iio_dev *indio_dev, //folosim pentru a citi datele de la driver
@@ -70,7 +149,14 @@
 				else
 					return -EINVAL;
 			case IIO_CHAN_INFO_ENABLE:
-					st->reg_select = val ? 1 : 0;
+					if(val){
+						st->reg_select = 1;
+						iio_adc_emu_spi_write(st, EMU_POWER_REG, EMU_POWER_DISABLE); //disable power register
+					}
+					else{
+						st->reg_select = 0;
+						iio_adc_emu_spi_write(st, EMU_POWER_REG, EMU_POWER_ENABLE); //enable power register
+					}
 					return 0;
 			default:
 				return -EINVAL;
@@ -97,6 +183,7 @@
  static const struct iio_info iio_adc_emu_info = {
 	.read_raw = &iio_adc_emu_read_raw,
 	.write_raw = &iio_adc_emu_write_raw,
+	.debugfs_reg_access = &iio_adc_emu_debugfs_reg_access,
  };
 
 
@@ -111,6 +198,7 @@
 
 	st = iio_priv(indio_dev); //returneaza pointer la structura privata a device-ului
 	st->reg_select = 1;  //enable cu valoarea 1 (oprit)
+	st->spi = spi; //initializam structura cu device-ul spi
 	memset(st->chan_val, 0, sizeof(st->chan_val)); //initializam valorile canalelor cu 0
     indio_dev->name = "iio_adc_emu";
     indio_dev->info = &iio_adc_emu_info;
