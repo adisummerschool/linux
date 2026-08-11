@@ -72,6 +72,7 @@ static int iio_adc_emu_spi_write(struct iio_adc_emu_st *st, u8 addr, u8 data)
         return spi_sync_transfer(st->spi, &t, 1);
 }
 
+
 static int iio_adc_emu_debugfs_reg_access(struct iio_dev *indio_dev,
                                 unsigned reg, unsigned writeval,
                                 unsigned *readval)
