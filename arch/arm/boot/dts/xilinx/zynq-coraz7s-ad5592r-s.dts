@@ -12,6 +12,7 @@
 	ad5592r_s: spi_adc@0 {
 		reg = <0>;
 		compatible = "ad5592r_s";
+		spi-cpol;
 		spi-max-frequency = <10000000>;
 	};
 };
