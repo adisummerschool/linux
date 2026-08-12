@@ -19,8 +19,8 @@
 #define EMU_POWER_ENABLE 0x0
 #define EMU_POWER_DISABLE 0x20
 
-#define EMU_REG_CNVST 0x03
-#define EMU_CNVST_START BIT(0)
+#define EMU_REG_CNVST 0x03 //registrul de conversie
+#define EMU_CNVST_START BIT(0) //bit ul de start conversie
 
 #define EMU_REG_CHAN_HIGH(x) 	(0x04 + (2 * (x)) )
 #define EMU_REG_CHAN_LOW(x)  	(0x05 + (2 * (x)) )
