@@ -20,7 +20,23 @@
  #define ADC_AD5592R_S_SELECT_RDB		GENMASK(5,2)
 
  #define ADC_AD5592R_S_REG_PD_ADDR		0xB	
- #define ADC_AD5592R_S_REG_EN_IREF		BIT(9)			
+ #define ADC_AD5592R_S_REG_EN_IREF		BIT(9)	
+
+ #define ADC_AD5592R_S_ADC_REG          0x04
+ #define ADC_AD5592R_S_ADC_ENABLE		GENMASK(5,0)
+
+//  #define ADC_AD5592R_S_REG_CHAN_HIGH(x)           (0x04 + (2 * x))
+//  #define ADC_AD5592R_S_REG_CHAN_LOW(x)            (0x05 + (2 * x))
+
+//  #define ADC_AD5592R_S_HIGH_DATA_MSK              GENMASK(11,8)
+
+ #define ADC_AD5592R_S_REG_SEQ_ADDR     0x02
+ #define ADC_AD5592R_S_REG_SEQ_MSK      GENMASK(5,0)
+ #define ADC_AD5592R_S_REG_SEQ_CHAN(x)		BIT(x)
+
+ #define ADC_AD5592R_S_CONV_DATA        GENMASK(11,0)
+
+ #define ADC_AD5592R_S_REG_CFG_MSK		GENMASK(5,0)			
 
 
 struct adc_ad5592r_s_st {
@@ -101,38 +117,61 @@ struct adc_ad5592r_s_st {
 
  }
 
+ static int adc_ad5592r_s_read_chan(struct adc_ad5592r_s_st *st, 
+                                int channel,
+                                u16*readval)
+{
+		u16 rx = 0;
+        u16 adc_data = 0;
+        int ret = 0;
+
+		struct spi_transfer t = {
+			.rx_buf = &rx,
+			.len = 2,
+		};
+
+        ret = adc_ad5592r_s_spi_write(st, ADC_AD5592R_S_REG_SEQ_ADDR,
+                              ADC_AD5592R_S_REG_SEQ_CHAN(channel));
+        if (ret) {
+                dev_err(&st->spi->dev, "ADC SEQ selection failed: %d\n", ret);
+                return ret;
+        }
+
+
+        ret = spi_sync_transfer(st->spi, &t, 1);
+        if (ret) {
+                dev_err(&st->spi->dev, "ADC dummy transfer failed: %d\n", ret);
+                return ret;
+        }
+
+        ret = spi_sync_transfer(st->spi, &t, 1);
+        if (ret) {
+                dev_err(&st->spi->dev, "ADC conversion read failed: %d\n", ret);
+                return ret;
+        }
+
+        adc_data = get_unaligned_be16(&rx);
+        *readval = FIELD_GET(ADC_AD5592R_S_CONV_DATA,adc_data);
+        return 0;
+}
+
 static int adc_ad5592r_s_read_raw(struct iio_dev *indio_dev,
 				  struct iio_chan_spec const *chan, int *val,
 				  int *val2, long mask)
 {
 	struct adc_ad5592r_s_st *st = iio_priv(indio_dev);
 
+	int ret = 0;
+
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
 		if (!st->reg_select) {
-			switch (chan->channel) {
-			//  AD5592R has 8 channels, but we will only use 6
-			case 0:
-				*val = st->chan_val[0];
-				return IIO_VAL_INT;
-			case 1:
-				*val = st->chan_val[1];
-				return IIO_VAL_INT;
-			case 2:
-				*val = st->chan_val[2];
-				return IIO_VAL_INT;
-			case 3:
-				*val = st->chan_val[3];
-				return IIO_VAL_INT;
-			case 4:
-				*val = st->chan_val[4];
-				return IIO_VAL_INT;
-			case 5:
-				*val = st->chan_val[5];
-				return IIO_VAL_INT;
-			default:
-				return -EINVAL;
-			}
+			ret = adc_ad5592r_s_read_chan(st, chan->channel, (u16 *) val);
+			if (ret) {
+                dev_err(&st->spi->dev, "ADC conversion READ failed: %d\n", ret);
+                return ret;
+        	}
+			return IIO_VAL_INT;
 		} else {
 			return -EINVAL;
 		}
@@ -158,32 +197,32 @@ static int adc_ad5592r_s_write_raw(struct iio_dev *indio_dev,
 			case 0:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 0");
-				st->chan_val[0] = val;
+				//st->chan_val[0] = val;
 				break;
 			case 1:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 1");
-				st->chan_val[1] = val;
+				//st->chan_val[1] = val;
 				break;
 			case 2:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 2");
-				st->chan_val[2] = val;
+				//st->chan_val[2] = val;
 				break;
 			case 3:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 3");
-				st->chan_val[3] = val;
+				//st->chan_val[3] = val;
 				break;
 			case 4:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 4");
-				st->chan_val[4] = val;
+				//st->chan_val[4] = val;
 				break;
 			case 5:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 5");
-				st->chan_val[5] = val;
+				//st->chan_val[5] = val;
 				break;
 			default:
 				dev_info(&indio_dev->dev,
@@ -274,6 +313,10 @@ static int ad5592r_s_probe(struct spi_device *spi)
 
 	adc_ad5592r_s_spi_write(st, ADC_AD5592R_S_REG_PD_ADDR, 
 						FIELD_PREP(ADC_AD5592R_S_REG_EN_IREF, 1));
+	
+	adc_ad5592r_s_spi_write(st, ADC_AD5592R_S_ADC_REG, 
+						FIELD_PREP(ADC_AD5592R_S_REG_CFG_MSK,
+							ADC_AD5592R_S_ADC_ENABLE));
 
 	return devm_iio_device_register(&spi->dev, indio_dev);
 }
