@@ -21,6 +21,11 @@
  #define AD5592R_REG_PD_ADDR 0xB
  #define AD5592R_REG_EN_IREF BIT(9)
 
+ #define AD5592R_SEQ_ADDR 0x2
+ #define AD5592_SEQ_MSK GENMASK(5, 0)
+ #define AD5592R_NOP_ADDR 0x0
+ #define AD5592R_CONFIG_ADDR 0x4
+
  struct iio_ad5592r_s_st {
      struct spi_device *spi;
      int reg_select;
@@ -77,6 +82,43 @@
    return 0;
  }
 
+ static int iio_ad5592r_s_read_chan(struct iio_ad5592r_s_st *st, int channel, u16 *readval)
+ {
+   u16 rcv_data = 0;
+   u16 rx = 0;
+   int ret = 0;
+   struct spi_transfer t = {
+      .rx_buf = &rx,
+      .len = 2
+   };
+
+    //Write in Sequence cu canalul pe care vrem sa l masuram
+
+   ret = iio_ad5592r_s_spi_write(st, AD5592R_SEQ_ADDR, 1 << channel);
+   if (ret) {
+      dev_err(&st->spi->dev, "Writing conversion reg failed: %d\n", ret);
+      return ret;
+   }
+    //Write NOP (cat timp noi facem citirea, face masuratoarea)
+   ret = spi_sync_transfer(st->spi, &t, 1);
+   if (ret)
+   {
+    dev_info(&st->spi->dev, "Failed receiving readback");
+    return ret;
+   }
+    //Citim rez masuratorii
+   ret = spi_sync_transfer(st->spi, &t, 1);
+   if (ret)
+   {
+    dev_info(&st->spi->dev, "Failed receiving readback");
+    return ret;
+   }
+   rcv_data = get_unaligned_be16(&rx);
+   *readval = FIELD_GET(AD5592R_S_DATA_MASK, rcv_data);
+
+   return 0;
+ }
+
  
 
  static int iio_ad5592r_s_debugfs_reg_access(struct iio_dev *indio_dev,
@@ -101,29 +143,10 @@
    switch (mask){
       case IIO_CHAN_INFO_RAW:
       if(!st->reg_select){
-                switch(chan->channel){
-                        case 0: 
-                                *val = st->chan_val[0];
-                                return IIO_VAL_INT;
-               
-                         case 1: 
-                                *val = st->chan_val[1];
-                                return IIO_VAL_INT;
-                        case 2: 
-                                *val = st->chan_val[2];
-                                return IIO_VAL_INT;
-                        case 3: 
-                                *val = st->chan_val[3];
-                                return IIO_VAL_INT;
-                        case 4:  
-                                *val = st->chan_val[4];
-                                return IIO_VAL_INT;
-                        case 5: 
-                                *val = st->chan_val[5];
-                                return IIO_VAL_INT;
-                        default: 
-                                return -EINVAL;
-                }
+             u16 data;
+                iio_ad5592r_s_read_chan (st, chan->channel, &data);
+                *val = data;
+                return IIO_VAL_INT;
             }
              else {
                 return -EINVAL;
@@ -258,6 +281,7 @@
     indio_dev->num_channels = ARRAY_SIZE(iio_ad5592r_s_channels);
 
     iio_ad5592r_s_spi_write(st, AD5592R_REG_PD_ADDR, FIELD_PREP(AD5592R_REG_EN_IREF, 1));
+    iio_ad5592r_s_spi_write(st, AD5592R_CONFIG_ADDR, 0x3F);
 
     return devm_iio_device_register(&spi->dev, indio_dev);
  }
