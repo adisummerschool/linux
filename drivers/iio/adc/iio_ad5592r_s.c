@@ -16,16 +16,28 @@
 const int CHANEL_0 = 0, CHANEL_1 = 1, CHANEL_2 = 2;
 const int CHANEL_3 = 3, CHANEL_4 = 4, CHANEL_5 = 5;
 
+#define AD5592R_S_CONTROL_MASK	BIT(15)
+
 #define AD5592R_S_READB_REG	0x7
 #define AD5592R_S_READ_EN_MASK	BIT(6)
 #define AD5592R_S_READB_ADDR_MASK	GENMASK(5,2)
 
-#define AD5592R_S_CONTROL_MASK	BIT(15)
 #define AD5592R_S_REG_ADDR_MASK	GENMASK(14,11)
 #define AD5592R_S_DATA_MASK	GENMASK(10,0)
 
 #define AD5592R_S_POWER_ON_REG	0xB
 #define AD5592R_S_POWER_EN	BIT(9)
+
+#define AD5592R_S_ADC_SEQ_REG	0x02
+#define AD5592R_S_ADC_SEQ_EN(x)	1<<x
+
+#define AD5592R_S_PLLDWN_REG_ADDR	0x06
+#define AD5592R_S_ADC_CONF_REG	0x04
+#define AD5592R_S_ADC_CONF_MASK	GENMASK(5,0)
+
+#define AD5592R_S_ADC_ADDR_MASK	GENMASK(14,12)
+#define AD5592R_S_ADC_DATA_MASK	GENMASK(11,0)
+
 
 
 struct iio_ad5592r_s_st {
@@ -76,13 +88,13 @@ static int iio_ad5592r_s_spi_read(struct iio_ad5592r_s_st *st, u8 addr,
 	ret = iio_ad5592r_s_spi_write(st,AD5592R_S_READB_REG,reg_rdb_data);
 	if(ret)
 	{
-		dev_info(&st->spi->dev,"Writing the readback register failed");
+		dev_err(&st->spi->dev,"Writing the readback register failed");
 		return ret;
 	}
 
 	ret = spi_sync_transfer(st->spi,&t,1);
 	if(ret){
-		dev_info(&st->spi->dev,"SPI read transfer failed %d\n",ret);
+		dev_err(&st->spi->dev,"SPI read transfer failed %d\n",ret);
 		return ret;
 	}
 
@@ -103,37 +115,90 @@ static int iio_ad5592r_s_debugfs_reg_access(struct iio_dev *indio_dev,
 	return iio_ad5592r_s_spi_write(st,reg,writeval);
 }
 
+static int iio_ad5592r_s_chan_read(struct iio_ad5592r_s_st *st, int chan,
+				u16 *data)
+{
+	u16 rx= 0;
+	u16 data_x = 0;
+	u8 chan_check = 0;
+	int ret = 0;
+
+	struct spi_transfer t = {
+		.tx_buf = NULL,
+		.rx_buf = &rx,
+		.len = 2
+	};
+
+	ret = iio_ad5592r_s_spi_write(st,AD5592R_S_ADC_SEQ_REG,
+				FIELD_PREP(AD5592R_S_ADC_CONF_MASK,
+					AD5592R_S_ADC_SEQ_EN(chan)));
+	if(ret){
+		dev_err(&st->spi->dev,
+			"Writing to sequence register failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = iio_ad5592r_s_spi_write(st,0x0,0x0);
+	if(ret){
+		dev_err(&st->spi->dev,"Somehow NOP failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = spi_sync_transfer(st->spi,&t,1);
+	if(ret){
+		dev_err(&st->spi->dev,"SPI ADC read transfer failed %d\n",ret);
+		return ret;
+	}
+
+	data_x = get_unaligned_be16(&rx);
+	chan_check = FIELD_GET(AD5592R_S_ADC_ADDR_MASK,data_x);
+	if (chan_check != chan){
+		dev_err(&st->spi->dev,
+			"Reading %d channel insted of %d ADC channel\n",
+			chan_check,chan);
+		return chan_check;
+	}
+
+	*data = FIELD_GET(AD5592R_S_ADC_DATA_MASK,data_x);
+
+	return 0;
+}
+
+static int iio_ad5592r_s_io_config_adc(struct iio_ad5592r_s_st *st)
+{
+	int ret = 0;
+
+	ret = iio_ad5592r_s_spi_write(st,AD5592R_S_PLLDWN_REG_ADDR,
+				FIELD_PREP(AD5592R_S_ADC_CONF_MASK,0x0));
+	if(ret){
+		dev_err(&st->spi->dev,
+			"Resetting I/O pin pulldown config failed: %d\n",ret);
+		return ret;
+	}
+	ret = iio_ad5592r_s_spi_write(st,AD5592R_S_ADC_CONF_REG,
+				FIELD_PREP(AD5592R_S_ADC_CONF_MASK,0x3F));
+	if(ret){
+		dev_err(&st->spi->dev,
+			"Setting I/O pin ADC config failed: %d\n",ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int iio_ad5592r_s_read_raw(struct iio_dev *indio_dev,
 				  struct iio_chan_spec const *chan, int *val,
 				  int *val2, long mask)
 {
 	struct iio_ad5592r_s_st *st = iio_priv(indio_dev);
 
+	int ret = 0;
+
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
 		if (!st->reg_select) {
-			switch (chan->channel) {
-			case CHANEL_0:
-				*val = st->chan_val[CHANEL_0];
-				break;
-			case CHANEL_1:
-				*val = st->chan_val[CHANEL_1];
-                                break;
-			case CHANEL_2:
-				*val = st->chan_val[CHANEL_2];
-                                break;
-			case CHANEL_3:
-				*val = st->chan_val[CHANEL_3];
-                                break;
-			case CHANEL_4:
-				*val = st->chan_val[CHANEL_4];
-                                break;
-			case CHANEL_5:
-				*val = st->chan_val[CHANEL_5];
-                                break;
-			default:
-				return -EINVAL;
-			}
+			ret = iio_ad5592r_s_chan_read(st,chan->channel,
+							(u16 *)val);
 			return IIO_VAL_INT;
 		} else
 			return -EINVAL;
@@ -156,28 +221,34 @@ static int iio_ad5592r_s_write_raw(struct iio_dev *indio_dev,
 		if (!st->reg_select) {
 			switch (chan->channel) {
 			case CHANEL_0:
-				dev_info(&indio_dev->dev, "Trying towrite to chanel 0");
-				st->chan_val[CHANEL_0] = val;
+				dev_info(&indio_dev->dev,
+					"Trying towrite to chanel 0");
+				//st->chan_val[CHANEL_0] = val;
 				break;
 			case CHANEL_1:
-				dev_info(&indio_dev->dev,"Trying to write to chanel 1");
-				st->chan_val[CHANEL_1] = val;
+				dev_info(&indio_dev->dev,
+					"Trying to write to chanel 1");
+				//st->chan_val[CHANEL_1] = val;
 				break;
 			case CHANEL_2:
-				dev_info(&indio_dev->dev, "Trying to write to chanel 2");
-				st->chan_val[CHANEL_2] = val;
+				dev_info(&indio_dev->dev,
+					"Trying to write to chanel 2");
+				//st->chan_val[CHANEL_2] = val;
 				break;
 			case CHANEL_3:
-				dev_info(&indio_dev->dev, "Trying to write to chanel 3");
-				st->chan_val[CHANEL_3] = val;
+				dev_info(&indio_dev->dev,
+					"Trying to write to chanel 3");
+				//st->chan_val[CHANEL_3] = val;
 				break;
 			case CHANEL_4:
-				dev_info(&indio_dev->dev, "Trying to write to chanel 4");
-				st->chan_val[CHANEL_4] = val;
+				dev_info(&indio_dev->dev,
+					"Trying to write to chanel 4");
+				//st->chan_val[CHANEL_4] = val;
 				break;
 			case CHANEL_5:
-				dev_info(&indio_dev->dev, "Trying to write to chanel 5");
-				st->chan_val[CHANEL_5] = val;
+				dev_info(&indio_dev->dev,
+					"Trying to write to chanel 5");
+				//st->chan_val[CHANEL_5] = val;
 				break;
 			default:
 				return -EINVAL;
@@ -271,6 +342,7 @@ static int iio_ad5592r_s_probe(struct spi_device *spi)
 	memset(st->chan_val, 0, sizeof(st->chan_val));
 	st->spi = spi;
 
+	iio_ad5592r_s_io_config_adc(st);
 
 	return devm_iio_device_register(&spi->dev, indio_dev);
 }
