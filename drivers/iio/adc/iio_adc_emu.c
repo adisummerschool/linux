@@ -10,6 +10,8 @@
 #include <linux/spi/spi.h>
 #include <linux/iio/iio.h>
 #include <linux/bitfield.h>
+#include<linux/iio/triggered_buffer.h>
+#include<linux/iio/trigger_consumer.h>
 
 #define EMU_RDWR_MASK BIT(7)
 #define EMU_ADDR_MSK GENMASK(14, 8)
@@ -23,7 +25,7 @@
 #define EMU_CNVST_START BIT(0) //bit ul de start conversie
 
 #define EMU_REG_CHAN_HIGH(x) 	(0x04 + (2 * (x)) )
-#define EMU_REG_CHAN_LOW(x)  	(0x05 + (2 * (x)) )
+#define EMU_REG_CHAN_LOW(x)  	(0x05 + (2 * (x)) )	
 
 #define EMU_HIGH_DATA_MSK		GENMASK(11,8)
 
@@ -123,18 +125,72 @@ static int iio_adc_emu_debugfs_reg_access(struct iio_dev *indio_dev,
 	return iio_adc_emu_spi_write(st, reg, writeval);
 }
 
+static irqreturn_t iio_adc_emu_trigger_handler(int irq, void *p){
+	struct iio_poll_func *pf = p;
+	struct iio_dev *indio_dev = pf->indio_dev;
+	struct iio_adc_emu_st *st = iio_priv(indio_dev);
+	// indio_dev -> active_scan_mask daca bitu 0 e activ canalu 0 e activ
+	int bit;
+	int ret;
+	u8 high,low;
+	u16 buf[2];
+	int i = 0;
+		ret = iio_adc_emu_spi_write(st, EMU_REG_CNVST, FIELD_PREP(EMU_CNVST_START, 1)); //incepe conversia 
+	if(ret){ 
+		dev_err(&st->spi->dev, "Writing conversion reg failed %d\n", ret);
+		iio_trigger_notify_done(indio_dev->trig); 
+		return IRQ_HANDLED;
+	}
+	for_each_set_bit(bit,indio_dev->active_scan_mask,indio_dev->num_channels){
+
+			ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN_HIGH(bit), &high);// citeste 4 biti pt HIGH 
+	if(ret){
+		dev_err(&st->spi->dev, "Reading high reg failed in trigger%d\n", ret);
+		iio_trigger_notify_done(indio_dev->trig); 
+		return IRQ_HANDLED;
+	}
+
+	ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN_LOW(bit), &low); //citeste byte ul LOW
+	if(ret){
+		dev_err(&st->spi->dev, "Reading low reg failed in trigger %d\n", ret);
+		iio_trigger_notify_done(indio_dev->trig); 
+		return IRQ_HANDLED;
+	}
+		buf[i++] = FIELD_PREP(EMU_HIGH_DATA_MSK, high) | low;
+	}
+	iio_push_to_buffers(indio_dev,buf);
+	iio_trigger_notify_done(indio_dev->trig); 
+	return IRQ_HANDLED;
+}
+
 // structura pentru canalele ADC
 static const struct iio_chan_spec iio_adc_emu_channels[] = {
-	{ .type = IIO_VOLTAGE,
-	  .channel = 0,
-	  .indexed = 1,
-	  .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
-	  .info_mask_separate = BIT(IIO_CHAN_INFO_RAW) },
-	{ .type = IIO_VOLTAGE,
-	  .channel = 1,
-	  .indexed = 1,
-	  .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
-	  .info_mask_separate = BIT(IIO_CHAN_INFO_RAW) }
+	{
+		.type = IIO_VOLTAGE,
+		.channel = 0,
+		.indexed = 1,
+		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+		.scan_index = 0,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
+	},
+	{
+		.type = IIO_VOLTAGE,
+		.channel = 1,
+		.indexed = 1,
+		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
+		.scan_index = 1,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
+	}
 };
 
 // citim datele de la ADC
@@ -219,7 +275,7 @@ static int iio_adc_emu_probe(struct spi_device *spi)
 {
 	struct iio_dev *indio_dev;
 	struct iio_adc_emu_st *st;
-
+	int ret;
 	//pentru alocarea memoriei
 	indio_dev = devm_iio_device_alloc(&spi->dev, sizeof(*st));
 
@@ -232,6 +288,12 @@ static int iio_adc_emu_probe(struct spi_device *spi)
 	indio_dev->info = &iio_adc_emu_info;
 	indio_dev->channels = iio_adc_emu_channels;
 	indio_dev->num_channels = 2;
+
+	ret = devm_iio_triggered_buffer_setup(&spi->dev,indio_dev,NULL, &iio_adc_emu_trigger_handler,NULL);
+	if(ret){
+		dev_err(&spi->dev, "Filed to create buffer");
+		return ret;
+	}
 
 	return devm_iio_device_register(&spi->dev, indio_dev);
 }
