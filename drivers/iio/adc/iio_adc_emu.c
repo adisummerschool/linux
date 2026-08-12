@@ -8,8 +8,11 @@
 #include <linux/unaligned.h>
 #include <linux/bitfield.h>
 #include <linux/module.h>
+
 #include <linux/spi/spi.h>
 #include <linux/iio/iio.h>
+#include <linux/iio/triggered_buffer.h>
+#include <linux/iio/trigger_consumer.h>
 
 #define EMU_RDWR_MSK    BIT(7)
 #define EMU_ADDR_MSK    GENMASK(14,8)
@@ -76,8 +79,8 @@ static int iio_adc_emu_spi_write(struct iio_adc_emu_st *st, u8 addr, u8 data)
                 | FIELD_PREP(EMU_DATA_MSK, data);
         put_unaligned_be16(tx, &package);
 
-        dev_info(&st->spi->dev, "tx we constructed %x\n", tx);
-        dev_info(&st->spi->dev, "package we constructed %x\n", package);
+        // dev_info(&st->spi->dev, "tx we constructed %x\n", tx);
+        // dev_info(&st->spi->dev, "package we constructed %x\n", package);
 
         return spi_sync_transfer(st->spi, &t, 1);
 }
@@ -107,13 +110,13 @@ static int iio_adc_emu_read_chan(struct iio_adc_emu_st *st, int channel, u16 *re
                 return ret;
         }
 
-        ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN_HIGH(channel), &high);
+        ret = iio_adc_emu_spi_write(st, EMU_REG_CHAN_HIGH(channel), &high);
         if(ret) {
                 dev_err(&st->spi->dev, "Reading high register failed: %d\n", ret);
                 return ret;
         }
 
-        ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN_LOW(channel), &low);
+        ret = iio_adc_emu_spi_write(st, EMU_REG_CHAN_LOW(channel), &low);
         if(ret) {
                 dev_err(&st->spi->dev, "Reading low register failed: %d\n", ret);
                 return ret;
@@ -192,6 +195,47 @@ static int iio_adc_emu_write_raw(struct iio_dev *indio_dev,
         }
 }
 
+static irqreturn_t iio_adc_emu_trigger_handler(int irq, void *p) {
+        struct iio_poll_func *pf = p;
+        struct iio_dev *indio_dev = pf->indio_dev;
+        struct iio_adc_emu_st *st = iio_priv(indio_dev);
+        int bit = 0;
+        int ret;
+        u8 high, low;
+        u16 buf[2];
+        int i = 0;
+
+        ret = iio_adc_emu_spi_write(st, EMU_REG_CNVST,
+                                        FIELD_PREP(EMU_CNVST_START, 1));
+        if(ret) {
+                dev_err(&st->spi->dev, "Writing conversion in buffer reg failed: %d\n", ret);
+                iio_trigger_notify_done(indio_dev->trig);
+                return IRQ_HANDLED;
+        }
+
+        for_each_set_bit(bit, indio_dev->active_scan_mask, indio_dev->num_channels)
+        {
+                ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN_HIGH(bit), &high);
+                if(ret) {
+                        dev_err(&st->spi->dev, "Reading high register failed in trigger: %d\n", ret);
+                        iio_trigger_notify_done(indio_dev->trig);
+                        return IRQ_HANDLED;
+                }
+
+                ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN_LOW(bit), &low);
+                if(ret) {
+                        dev_err(&st->spi->dev, "Reading low register failed in trigger: %d\n", ret);
+                        iio_trigger_notify_done(indio_dev->trig);
+                        return IRQ_HANDLED;
+                }
+                buf[i++] = FIELD_PREP(EMU_HIGH_DATA_MSK, high) | low;
+        }
+
+        iio_push_to_buffers(indio_dev, buf);
+        iio_trigger_notify_done(indio_dev->trig);
+        return IRQ_HANDLED;
+}
+
 static const struct iio_chan_spec iio_adc_emu_channels[] = {
         {
                 .type = IIO_VOLTAGE,
@@ -199,6 +243,12 @@ static const struct iio_chan_spec iio_adc_emu_channels[] = {
                 .indexed = 1,
                 .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
                 .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+                .scan_index = 0,
+                .scan_type = {
+                        .sign = 'u',
+                        .realbits = 12,
+                        .storagebits = 16
+                }
         },
         {
                 .type = IIO_VOLTAGE,
@@ -206,6 +256,12 @@ static const struct iio_chan_spec iio_adc_emu_channels[] = {
                 .indexed = 1,
                 .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
                 .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+                .scan_index = 1,
+                .scan_type = {
+                        .sign = 'u',
+                        .realbits = 12,
+                        .storagebits = 16
+                }
         }
 };
 
@@ -219,7 +275,7 @@ static int iio_adc_emu_probe(struct spi_device *spi)
 {
         struct iio_dev *indio_dev;
         struct iio_adc_emu_st *st;
-
+        int ret;
         indio_dev = devm_iio_device_alloc(&spi->dev, sizeof(*st));
 
         st = iio_priv(indio_dev);
@@ -230,6 +286,13 @@ static int iio_adc_emu_probe(struct spi_device *spi)
         indio_dev->info = &iio_adc_emu_info;
         indio_dev->channels = iio_adc_emu_channels;
         indio_dev->num_channels = ARRAY_SIZE(iio_adc_emu_channels);
+
+        ret = devm_iio_triggered_buffer_setup(&spi->dev, indio_dev, NULL, &iio_adc_emu_trigger_handler, NULL);
+        if(ret) {
+                dev_err(&spi->dev, "Failed to create buffer");
+                return ret;
+        }
+
 
         return devm_iio_device_register(&spi->dev, indio_dev);
 }
