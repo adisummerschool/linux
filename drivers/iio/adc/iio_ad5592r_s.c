@@ -23,6 +23,14 @@
  #define AD5592R_REG_PD_ADDR 0xB
  #define AD5592R_REG_EN_IREF BIT(9)
 
+ #define AD5592R_REG_SEQ_ADDR 0x2
+ #define AD5592R_REG_SEQ_CHAN GENMASK(5, 0)
+
+ #define AD5592R_REG_CONFIG_ADDR 0x4
+ #define AD5592R_REG_CONFIG_CHAN GENMASK(5, 0)
+
+ #define AD5592R_CNV_MASK GENMASK(11, 0)
+
   struct iio_ad5592r_st {
         struct spi_device *spi;
         int reg_select;
@@ -81,6 +89,40 @@
    return 0;
  }
 
+ static int iio_ad5592r_read_chan(struct iio_ad5592r_st *st, int channel, u16 *readval)
+ {
+   u16 rcv_data = 0;
+   int ret = 0;
+   u16 rx = 0;
+   struct spi_transfer t = {
+      .rx_buf = &rx,
+      .len = 2
+   };
+
+   ret = iio_ad5592r_spi_write(st, AD5592R_REG_SEQ_ADDR, 1 << channel);
+   
+   if (ret) {
+      dev_err(&st->spi->dev, "Writing sequence reg fail %d\n", ret);
+      return ret;
+   }
+
+   ret = spi_sync_transfer(st->spi, &t, 1);
+   if (ret) {
+      dev_info(&st->spi->dev, "Failed dummy transfer %d\n", ret);
+      return ret;
+   }
+
+   ret = spi_sync_transfer(st->spi, &t, 1);
+   if (ret) {
+      dev_info(&st->spi->dev, "Failed reading channel %d\n", ret);
+      return ret;
+   }
+
+   rcv_data = get_unaligned_be16(&rx);
+   *readval = FIELD_GET(AD5592R_CNV_MASK, rcv_data);
+   return 0;
+ }
+
  static int iio_ad5592r_debugfs_reg_access(struct iio_dev *indio_dev,
                                        unsigned reg, unsigned writeval,
                                        unsigned *readval)
@@ -98,18 +140,16 @@
                                  int *val, int *val2, long mask)
                                  {
                                     struct iio_ad5592r_st *st = iio_priv(indio_dev);
+                                    int ret = 0;
+                                    u16 readval;
                                     switch (mask) {
                                        case IIO_CHAN_INFO_RAW:
                                           if(!st->reg_select) {
-                                             switch(chan->channel) {
-                                                case 0: *val = st->chan_val[0]; break;
-                                                case 1: *val = st->chan_val[1]; break;
-                                                case 2: *val = st->chan_val[2]; break;
-                                                case 3: *val = st->chan_val[3]; break;
-                                                case 4: *val = st->chan_val[4]; break;
-                                                case 5: *val = st->chan_val[5]; break;
-                                                default: return -EINVAL;
+                                             ret = iio_ad5592r_read_chan(st, chan->channel, &readval);
+                                             if (ret) {
+                                             dev_err(&st->spi->dev, "Reading from channels failed");
                                              }
+                                             *val = readval;
                                              return IIO_VAL_INT;
                                           }
                                           else {
@@ -231,6 +271,7 @@
     indio_dev->num_channels = 6;
 
     iio_ad5592r_spi_write(st, AD5592R_REG_PD_ADDR, FIELD_PREP(AD5592R_REG_EN_IREF, 1));
+    iio_ad5592r_spi_write(st, AD5592R_REG_CONFIG_ADDR, AD5592R_REG_CONFIG_CHAN);
 
     return devm_iio_device_register(&spi->dev, indio_dev);
  }
