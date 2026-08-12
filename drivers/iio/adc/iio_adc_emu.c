@@ -11,6 +11,8 @@
 #include <linux/spi/spi.h>
 #include <linux/iio/iio.h>
 #include <linux/bitfield.h>
+#include <linux/iio/triggered_buffer.h>
+#include <linux/iio/trigger_consumer.h>
 
 #define EMU_RDWR_MSK BIT(7)
 #define EMU_ADDR_MSK GENMASK(14, 8)
@@ -71,8 +73,8 @@ static int iio_adc_emu_spi_write(struct iio_adc_emu_st *st, u8 addr, u8 data)
 
 	put_unaligned_be16(tx, &package);
 
-	dev_info(&st->spi->dev, "tx we constructed %x\n", tx);
-	dev_info(&st->spi->dev, "package we constructed %x\n", package);
+	// dev_info(&st->spi->dev, "tx we constructed %x\n", tx);
+	// dev_info(&st->spi->dev, "package we constructed %x\n", package);
 
 	return spi_sync_transfer(st->spi, &t, 1);
 }
@@ -132,11 +134,12 @@ static int iio_adc_emu_read_raw(struct iio_dev *indio_dev,
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
 		if (!st->reg_select) {
-			ret = iio_adc_emu_read_channel(st,
-					chan->channel, (u16 *) val);
+			ret = iio_adc_emu_read_channel(st, chan->channel,
+						       (u16 *)val);
 			if (ret) {
 				dev_err(&st->spi->dev,
-				      "Reading from channels failed %d\n", ret);
+					"Reading from channels failed %d\n",
+					ret);
 				return ret;
 			}
 			return IIO_VAL_INT;
@@ -198,6 +201,12 @@ static const struct iio_chan_spec iio_adc_emu_channels[] = {
 		///afecteze toate canalele
 		*/
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 0,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16,
+		}
 	},
 	{
 		.type = IIO_VOLTAGE,
@@ -205,8 +214,61 @@ static const struct iio_chan_spec iio_adc_emu_channels[] = {
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 1,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16,
+		}
 	}
 };
+
+static irqreturn_t iio_adc_emu_trigger_handler(int irq, void *p)
+{
+	struct iio_poll_func *pf = p;
+	struct iio_dev *indio_dev = pf->indio_dev;
+	struct iio_adc_emu_st *st = iio_priv(indio_dev);
+	int bit = 0;
+	u16 buf[2];
+	int index = 0;
+
+	u8 high = 0, low = 0;
+	int ret = iio_adc_emu_spi_write(st, EMU_REG_CONVST,
+					FIELD_PREP(EMU_REG_CONV_START, 1));
+
+	if (ret) {
+		dev_err(&st->spi->dev,
+			"Writing START conversion in buffer reg failed %d\n",
+			ret);
+		iio_trigger_notify_done(indio_dev->trig);
+		return IRQ_HANDLED;
+	}
+
+	for_each_set_bit(bit, indio_dev->active_scan_mask,
+			 indio_dev->num_channels) {
+		ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN0_HI(bit), &high);
+		if (ret) {
+			dev_err(&st->spi->dev,
+				"Reading hi buffer channel register failed %d\n",
+				ret);
+			iio_trigger_notify_done(indio_dev->trig);
+			return IRQ_HANDLED;
+		}
+
+		ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN0_LO(bit), &low);
+		if (ret) {
+			dev_err(&st->spi->dev,
+				"Reading lo buffer channel register failed %d\n",
+				ret);
+			iio_trigger_notify_done(indio_dev->trig);
+			return IRQ_HANDLED;
+		}
+		buf[index++] = FIELD_PREP(EMU_REG_4RBIT_SELECT, high) | low;
+	}
+	iio_push_to_buffers(indio_dev, buf);
+	iio_trigger_notify_done(indio_dev->trig);
+	return IRQ_HANDLED;
+}
 
 static const struct iio_info iio_adc_emu_info = {
 	.read_raw = &iio_adc_emu_read_raw,
@@ -230,6 +292,9 @@ static int iio_adc_emu_probe(struct spi_device *spi)
 	/*
 	///nu mai e 0 dupa virgula pentru ca avem chestii custom, si atunci 
 	///trebuie sa punem sizeoful structurii noi 
+
+	functiile devm - sunt construite ai sa aloce cat si sa dealoce 
+	memoria in cazul unui esec sua a unui scurtcircuit al placii
 	*/
 	indio_dev = devm_iio_device_alloc(&spi->dev, sizeof(*st));
 
@@ -242,7 +307,15 @@ static int iio_adc_emu_probe(struct spi_device *spi)
 	indio_dev->channels = iio_adc_emu_channels;
 	indio_dev->num_channels = ARRAY_SIZE(iio_adc_emu_channels);
 
-	return devm_iio_device_register(&spi->dev, indio_dev);
+	int ret = devm_iio_triggered_buffer_setup(
+		&spi->dev, indio_dev, NULL, &iio_adc_emu_trigger_handler, NULL);
+
+	if (ret) {
+		dev_info(&st->spi->dev, "Failed to create buffer %d\n", ret);
+		return ret;
+	}
+
+	return devm_iio_device_register(&st->spi->dev, indio_dev);
 }
 
 static struct spi_driver iio_adc_emu_driver = {
