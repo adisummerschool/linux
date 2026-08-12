@@ -10,6 +10,7 @@
  #include <linux/module.h>
  #include <linux/spi/spi.h>
  #include <linux/iio/iio.h>
+ #include <linux/delay.h>
 
 
 #define AD5592R_S_MSB_MSK BIT(15)
@@ -22,6 +23,11 @@
 
 #define AD5592R_S_REG_PD_ADDR 0xB
 #define AD5592R_S_REG_EN_IREF BIT(9)
+
+#define AD5592R_S_REG_ADC_SEQ_ADDR    0x2 
+#define AD5592R_S_REG_ADC_CONFIG_ADDR 0x4
+#define AD5592R_S_ADC_SEQ_CHAN(x)     BIT(x)
+#define AD5592R_S_ADC_RESULT_DATA_MSK GENMASK(11, 0)
 
  struct ad5592r_s_st{
  	int reg_select;
@@ -88,6 +94,49 @@ static int ad5592r_s_spi_read(struct ad5592r_s_st *st, u8 addr, u16 *data)
 	return 0;
  }
 
+ static int ad5592r_s_spi_read_adc(struct ad5592r_s_st *st, u16 *data)
+{
+	u16 rx = 0;
+	struct spi_transfer t = {
+		.tx_buf = NULL,
+		.rx_buf = &rx,
+		.len = 2,
+	};
+	int ret;
+
+	ret = spi_sync_transfer(st->spi, &t, 1);
+	if (ret)
+		return ret;
+
+	*data = get_unaligned_be16(&rx);
+	return 0;
+}
+
+
+static int ad5592r_s_read_chan(struct ad5592r_s_st *st, int channel, u16 *readval)
+{
+	u16 raw;
+	int ret;
+
+	
+	ret = ad5592r_s_spi_write(st, AD5592R_S_REG_ADC_SEQ_ADDR, AD5592R_S_ADC_SEQ_CHAN(channel));// selectează canalul de pe care vreau sa citesc
+	if (ret) {
+		dev_err(&st->spi->dev, "Writing ADC_SEQ failed %d\n", ret);
+		return ret;
+	}
+
+	ret = ad5592r_s_spi_read_adc(st, &raw); //primul SYNC porneste conversia
+	if (ret)
+		return ret;
+
+	
+	ret = ad5592r_s_spi_read_adc(st, &raw);// al doilea SYNC scoate rezultatul conversiei anterioare 
+	if (ret)
+		return ret;
+
+	*readval = FIELD_GET(AD5592R_S_ADC_RESULT_DATA_MSK, raw);
+	return 0;
+}
 
  static int ad5592r_s_debugfs_reg_access(struct iio_dev *indio_dev, unsigned reg, 
 											unsigned writeval, 
@@ -111,35 +160,20 @@ static int ad5592r_s_spi_read(struct ad5592r_s_st *st, u8 addr, u16 *data)
 				long mask)
  {
 	struct ad5592r_s_st *st = iio_priv(indio_dev); //folosim pentru a accesa structura noastra
-
+	int ret;
+	u16 data;
  	switch (mask) {
  	case IIO_CHAN_INFO_RAW:
-	if(!st->reg_select) {
-		switch (chan->channel) {
-			case 0:
-				*val = st->chan_val[0];
-				break;
-			case 1:
-				*val = st->chan_val[1];
-				break;
-			case 2:
-				*val = st->chan_val[2];
-				break;
-			case 3:
-				*val = st->chan_val[3];
-				break;
-			case 4:			
-				*val = st->chan_val[4];
-				break;
-			case 5:
-				*val = st->chan_val[5];
-				break;
-			default:
-				return -EINVAL;
+	if (!st->reg_select) {
+
+			ret = ad5592r_s_read_chan(st, chan->channel, &data); //citim valoare reala canale
+			if (ret) {
+				dev_err(&indio_dev->dev, "Reading channel failed\n");
+				return ret;
+			}
+			*val = data;
+			return IIO_VAL_INT;
 		}
-			return IIO_VAL_INT;	
-	}
-	else
 		return -EINVAL;
 	case IIO_CHAN_INFO_ENABLE:
 		*val = st->reg_select;
@@ -272,7 +306,8 @@ static int ad5592r_s_spi_read(struct ad5592r_s_st *st, u8 addr, u16 *data)
 	indio_dev->num_channels = ARRAY_SIZE(ad5592r_s_channels);
 
 	ad5592r_s_spi_write(st, AD5592R_S_REG_PD_ADDR, FIELD_PREP(AD5592R_S_REG_EN_IREF, 1));
- 	return devm_iio_device_register(&spi->dev, indio_dev);
+ 	ad5592r_s_spi_write(st, AD5592R_S_REG_ADC_CONFIG_ADDR, GENMASK(5, 0)); //pinii 0-5 ca intrări ADC
+	return devm_iio_device_register(&spi->dev, indio_dev);
  }
 
  struct spi_driver ad5592r_s_driver = {
