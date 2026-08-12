@@ -13,7 +13,8 @@
 
 #define AD5592R_S_MSB_MSK               BIT(15)
 #define AD5592R_S_ADDR_MSK              GENMASK(14,11)
-#define AD5592R_S_DATA_MSK              GENMASK(8,0)
+#define AD5592R_S_DATA_MSK              GENMASK(10,0)
+#define AD5592R_S_DATA_MSK_BIG          GENMASK(11,0)
 
 #define AD5592R_S_REG_RDB_ADDR          0x7
 #define AD5592R_S_EN_READB              BIT(6)
@@ -21,6 +22,11 @@
 
 #define AD5592R_S_REG_PD_ADDR           0XB
 #define AD5592R_S_REG_EN_IREF           BIT(9)
+
+#define AD5592R_S_REG_CONFIG_ADDR       0x4
+#define AD5592R_S_REG_SEQ_ADDR          0x2
+#define AD5592R_S_REG_CONFIG_DATA       GENMASK(5,0)
+
 
 struct ad5592r_s_st {
         bool en;
@@ -91,6 +97,42 @@ static int ad5592r_s_debugfs_reg_access(struct iio_dev *indio_dev,
 }
 
 
+static int ad5592r_s_read_chan(struct ad5592r_s_st *st, int channel, u16 *readval)
+{
+        int ret;
+        u16 rx = 0;
+        u16 data = 0;
+        struct spi_transfer t = {
+                .rx_buf = &rx,
+                .len = 2
+        };
+
+        ret = ad5592r_s_spi_write(st, AD5592R_S_REG_SEQ_ADDR, 1 << channel);
+        if(ret) {
+                dev_err(&st->spi->dev, "Writing conversion sequence failed: %d\n", ret);
+                return ret;
+
+        }
+
+        ret = spi_sync_transfer(st->spi, &t, 1);
+        if(ret) {
+                dev_err(&st->spi->dev, "Starting ADC conversion failed: %d\n", ret);
+                return ret;
+        }
+
+        ret = spi_sync_transfer(st->spi, &t, 1);
+        if(ret) {
+                dev_err(&st->spi->dev, "ADC conversion failed: %d\n", ret);
+                return ret;
+        }
+
+        dev_info(&st->spi->dev, "wire: %hx\n", rx);
+        data = get_unaligned_be16(&rx);
+        dev_info(&st->spi->dev, "data: %hx\n", data);
+        *readval = FIELD_GET(AD5592R_S_DATA_MSK_BIG, data);
+        dev_info(&st->spi->dev, "readval: %hx\n", *readval);
+        return 0;
+}
 
 static int ad5592r_s_read_raw(struct iio_dev *indio_dev,
 			            struct iio_chan_spec const *chan,
@@ -99,38 +141,18 @@ static int ad5592r_s_read_raw(struct iio_dev *indio_dev,
 			            long mask)
 {
         struct ad5592r_s_st *st = iio_priv(indio_dev);
-
+        int ret = 0;
+        u16 readval;
         switch (mask) {
         case IIO_CHAN_INFO_RAW:
                 if(!st->reg_select){
-                        switch (chan->channel) {
-                                case 0:
-                                        *val = st->chan_val[0];
-                                        return IIO_VAL_INT;
-
-                                case 1:
-                                        *val = st->chan_val[1];
-                                        return IIO_VAL_INT;
-
-                                case 2:
-                                        *val = st->chan_val[2];
-                                        return IIO_VAL_INT;
-
-                                case 3:
-                                        *val = st->chan_val[3];
-                                        return IIO_VAL_INT;
-
-                                case 4:
-                                        *val = st->chan_val[4];
-                                        return IIO_VAL_INT;
-
-                                case 5:
-                                        *val = st->chan_val[5];
-                                        return IIO_VAL_INT;
-
-                                default:
-                                        return -EINVAL;
+                        ret = ad5592r_s_read_chan(st, chan->channel, &readval);
+                        if (ret) {
+                                dev_err(&st->spi->dev, "Reading from channels failed");
+                                return ret;
                         }
+                        *val = readval;
+                        return IIO_VAL_INT;
                 }
                 else {
                         return -EINVAL;
@@ -159,32 +181,32 @@ static int ad5592r_s_write_raw(struct iio_dev *indio_dev,
                                 switch(chan->channel) {
                                         case 0:
                                                 dev_info(&indio_dev->dev, "Trying to write to channel 0");
-                                                st->chan_val[0] = val;
+                                                // st->chan_val[0] = val;
                                                 return 0;
 
                                         case 1:
                                                 dev_info(&indio_dev->dev, "Trying to write to channel 1");
-                                                st->chan_val[1] = val;
+                                                // st->chan_val[1] = val;
                                                 return 0;
 
                                         case 2:
                                                 dev_info(&indio_dev->dev, "Trying to write to channel 2");
-                                                st->chan_val[2] = val;
+                                                // st->chan_val[2] = val;
                                                 return 0;
 
                                         case 3:
                                                 dev_info(&indio_dev->dev, "Trying to write to channel 3");
-                                                st->chan_val[3] = val;
+                                                 // st->chan_val[3] = val;
                                                 return 0;
 
                                         case 4:
                                                 dev_info(&indio_dev->dev, "Trying to write to channel 4");
-                                                st->chan_val[4] = val;
+                                                // st->chan_val[4] = val;
                                                 return 0;
 
                                         case 5:
                                                 dev_info(&indio_dev->dev, "Trying to write to channel 5");
-                                                st->chan_val[5] = val;
+                                                // st->chan_val[5] = val;
                                                 return 0;
 
                                         default:
@@ -275,6 +297,7 @@ static int ad5592r_s_probe(struct spi_device *spi)
         indio_dev->num_channels = ARRAY_SIZE(ad5592r_s_channels);;
 
         ad5592r_s_spi_write(st, AD5592R_S_REG_PD_ADDR, FIELD_PREP(AD5592R_S_REG_EN_IREF, 1));
+        ad5592r_s_spi_write(st, AD5592R_S_REG_CONFIG_ADDR, AD5592R_S_REG_CONFIG_DATA);
 
         return devm_iio_device_register(&spi->dev, indio_dev);
 }
