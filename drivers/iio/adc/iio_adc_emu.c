@@ -12,11 +12,20 @@
 #include <linux/bitfield.h>
 
 #define EMU_RDWR_MASK BIT(7)
-#define EMU_ADDR_MSK GENMASK(15, 8)
+#define EMU_ADDR_MSK GENMASK(14, 8)
 #define EMU_DATA_MSK GENMASK(7, 0)
+
 #define EMU_POWER_REG 0x02
 #define EMU_POWER_ENABLE 0x0
 #define EMU_POWER_DISABLE 0x20
+
+#define EMU_REG_CNVST 0x03
+#define EMU_CNVST_START BIT(0)
+
+#define EMU_REG_CHAN_HIGH(x) 	(0x04 + (2 * (x)) )
+#define EMU_REG_CHAN_LOW(x)  	(0x05 + (2 * (x)) )
+
+#define EMU_HIGH_DATA_MSK		GENMASK(11,8)
 
 struct iio_adc_emu_st {
 	struct spi_device *spi;
@@ -24,24 +33,35 @@ struct iio_adc_emu_st {
 	int chan_val[2];
 };
 
-static int iio_adc_emu_spi_read(struct iio_adc_emu_st *st, u8 addr, u8 *data)
-{
-	u8 tx = 0, rx = 0;
+ static int iio_adc_emu_spi_read(struct iio_adc_emu_st *st, u8 addr, u8 *data)
+ {
+	u8 tx = 0;
+	u8 rx = 0;
 	int ret = 0;
-	struct spi_transfer t[] = { { .tx_buf = &tx, .len = 1 },
-				    { .rx_buf = &rx, .len = 1 } };
+ 	struct spi_transfer t[] = {
+ 		{
+ 			.tx_buf = &tx, 
+ 			.len = 1, //pentru ca vrem sa trimitem doar adresa
+ 		},
+ 		{
+ 			.rx_buf = &rx,
+ 			.len = 1,
+ 		},
+ 	};
 
-	tx = FIELD_PREP(EMU_RDWR_MASK, 1) | addr;
+	tx = FIELD_PREP(EMU_RDWR_MASK, 1) | addr; //setam bitul de read/write pe 1 pentru a citi si adresa pe care vrem sa o citim
+	
+ 	ret = spi_sync_transfer(st->spi, t, 2); //trimitem datele prin spi, 2 pentru ca avem 2 structuri de tip transfer
 
-	ret = spi_sync_transfer(st->spi, t, 2);
-	if (ret) {
-		dev_info(&st->spi->dev, "SPI read failed");
+	if(ret)
+	{
+		dev_info(&st->spi->dev, "SPI READ transfer failed");
 		return ret;
 	}
 
-	*data = rx;
-	return 0;
-}
+	*data = rx; //extragem datele din rx
+	return 0; 
+ }
 
 static int iio_adc_emu_spi_write(struct iio_adc_emu_st *st, u8 addr, u8 data)
 {
@@ -59,6 +79,37 @@ static int iio_adc_emu_spi_write(struct iio_adc_emu_st *st, u8 addr, u8 data)
 
 	return spi_sync_transfer(st->spi, &t, 1);
 }
+
+static int iio_adc_emu_read_chan(struct iio_adc_emu_st *st, int channel, u16 *readval)
+ {
+	u8 high, low; //ce citim in functie de ce canal avem
+	u16  data = 0;
+	int ret;
+
+	ret = iio_adc_emu_spi_write(st, EMU_REG_CNVST, FIELD_PREP(EMU_CNVST_START, 1)); //incepe conversia 
+	if(ret){ 
+		dev_err(&st->spi->dev, "Writing conversion reg failed %d\n", ret);
+		return ret;
+	}
+
+	ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN_HIGH(channel), &high);// citeste 4 biti pt HIGH 
+	if(ret){
+		dev_err(&st->spi->dev, "Reading high reg failed %d\n", ret);
+		return ret;
+	}
+
+	ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN_LOW(channel), &low); //citeste byte ul LOW
+	if(ret){
+		dev_err(&st->spi->dev, "Reading low reg failed %d\n", ret);
+		return ret;
+	}
+
+	data = FIELD_PREP(EMU_HIGH_DATA_MSK, high) | low; //concatenarea celor 2 bytes
+	*readval = data;
+	return 0;
+	
+
+ }
 
 static int iio_adc_emu_debugfs_reg_access(struct iio_dev *indio_dev,
 					  unsigned reg, unsigned writeval,
@@ -93,17 +144,19 @@ static int iio_adc_emu_read_raw(struct iio_dev *indio_dev,
 {
 	// citim datele
 	struct iio_adc_emu_st *st = iio_priv(indio_dev);
+	int ret;
+
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
 		// citim datele de la ADC
 		if (!st->reg_select) {
-			if (chan->channel) {
 				//channel 1
-				*val = st->chan_val[1]; //hardcoded value for channel 1
-			} else {
+				ret = iio_adc_emu_read_chan(st, chan->channel,(u16 *)val); //hardcoded value for channel 1
 				//channel 0
-				*val = st->chan_val[0]; //hardcoded value for channel 0
-			}
+				if(ret){
+					dev_err(&st->spi->dev, "Reading from channels failed");
+					return ret;
+				}
 			return IIO_VAL_INT;
 		} else {
 			return -EINVAL;
@@ -128,11 +181,11 @@ static int iio_adc_emu_write_raw(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_RAW:
 		if (!st->reg_select) {
 			if (chan->channel) {
-				st->chan_val[1] = val;
+				// st->chan_val[1] = val;
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 1");
 			} else {
-				st->chan_val[0] = val;
+				// st->chan_val[0] = val;
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 0");
 			}
