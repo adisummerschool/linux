@@ -22,18 +22,20 @@
 
 
  //CONSTANTE(CHESTII NOI)
- #define EMU_POWER_REG 0x02
- #define EMU_POWER_ENB 0x00
- #define EMU_POWER_DSB 0x20
+ #define EMU_POWER_REG      0x02
+ #define EMU_POWER_ENB      0x00
+ #define EMU_POWER_DSB      0x20
+ #define EMU_CONVR_REG      0x03
+ #define EMU_CONVR_STRT     BIT(0)
+ #define EMU_CHAN_HIGH(x)   (0x04 + (2*(x)))
+ #define EMU_CHAN_LOWW(x)   (0x05 + (2*(x)))
+ #define EMU_HIGH_DATA_MSK  GENMASK(11,8)
 struct iio_adc_emu_st_prv 
     {
         struct spi_device *spi;
         int reg_select;
         int chan_val[2];
     };
-
-
-
 
  //CHESTII NOI
 
@@ -86,7 +88,34 @@ static int iio_adc_emu_spi_write(struct iio_adc_emu_st_prv *st, u8 addr, u8 data
         dev_info(&st->spi->dev,"Package we constructed %x\n", package);
         return spi_sync_transfer(st->spi, t, 1); 
     }
+static int iio_adc_emu_read_channel(struct iio_adc_emu_st_prv *st,int channel, u16 *readvalue)
+    {
+        u8 high, low;
+        u16 data = 0;
+        int ret;
+        ret = iio_adc_emu_spi_write(st, EMU_CONVR_REG, FIELD_PREP(EMU_CONVR_STRT,1));
 
+        if(ret)
+            {
+                dev_err(&st->spi->dev, "Writing conversion register failed. ERROR CODE: %d\n",ret);
+                return ret;
+            }
+        ret = iio_adc_emu_spi_read(st,EMU_CHAN_HIGH(channel),&high);
+        if(ret)
+            {
+                dev_err(&st->spi->dev, "Readin high register failed. ERROR CODE: %d\n",ret);
+                return ret;
+            }
+        ret = iio_adc_emu_spi_read(st,EMU_CHAN_LOWW(channel),&low);
+        if(ret)
+            {
+                dev_err(&st->spi->dev, "Readin low register failed. ERROR CODE: %d\n",ret);
+                return ret;
+            }
+        data = FIELD_PREP(EMU_HIGH_DATA_MSK, high)|low;
+        *readvalue = data;
+        return 0;           
+    }
 static int iio_adc_emu_debugfs_reg_access(struct iio_dev *indio_dev,unsigned reg, unsigned writeval, unsigned *readval)
     {
         struct iio_adc_emu_st_prv *st = iio_priv(indio_dev);
@@ -99,15 +128,18 @@ static int iio_adc_emu_debugfs_reg_access(struct iio_dev *indio_dev,unsigned reg
 static int iio_adc_emu_read_raw(struct iio_dev *indio_dev,struct iio_chan_spec const *chan,int *val,int *val2,long mask)
     {
         struct iio_adc_emu_st_prv *st = iio_priv(indio_dev);
+        int ret;
         switch (mask) 
             {
                 case IIO_CHAN_INFO_RAW:
                     if(!st->reg_select)
                         {
-                            if(chan->channel)
-                                *val = st->chan_val[1];
-                            else
-                                *val = st->chan_val[0];
+                            ret = iio_adc_emu_read_channel(st,chan->channel,(u16 *)val);
+                            if(ret)
+                            {
+                                dev_err(&st->spi->dev, "Reading from channel failed");
+                                return ret;
+                            }
                             return  IIO_VAL_INT;
                         }
                     else
@@ -131,13 +163,13 @@ static int iio_adc_emu_write_raw(struct iio_dev *indio_dev,struct iio_chan_spec 
                     if(chan->channel)
                         {
                                 dev_info(&indio_dev->dev, "Trying to write to channel 1");
-                                st->chan_val[1]=val;
+                                //st->chan_val[1]=val;
                         }
                         
                     else 
                         {
                                 dev_info(&indio_dev->dev, "Trying to write to channel 0");
-                                st->chan_val[0] = val;
+                                //st->chan_val[0] = val;
                         }
                     return 0; 
                 }
