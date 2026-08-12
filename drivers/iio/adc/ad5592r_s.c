@@ -24,6 +24,10 @@
 #define AD5592R_POWER_DISABLE		BIT(10)
 #define AD5592R_REG_EN_IREF			BIT(9)
 
+#define AD5592R_REG_EN_ADC_SEQ		0X02
+#define AD5592R_REG_ADC_CONFIG		0x04
+#define AD5592R_OUTPUT_MSK			GENMASK(11, 0)
+
 struct iio_adc_cora_st {
 	struct spi_device *spi;
 	int reg_select;
@@ -93,6 +97,46 @@ static int iio_adc_cora_debugfs_reg_access(struct iio_dev *indio_dev,
 	return iio_adc_cora_spi_write(st, reg, writeval);
 }
 
+static int iio_adc_cora_read_chan(struct iio_adc_cora_st *st,
+								int channel, u16 *readval)
+{
+	u16 data = 0;
+	u16 rcv_data = 0;
+	int ret;
+
+	ret = iio_adc_cora_spi_write(st, AD5592R_REG_EN_ADC_SEQ,
+								BIT(channel));
+
+	if(ret) {
+		dev_err(&st->spi->dev, "Writing conversion reg failed %d\n", ret);
+		return ret;
+	}
+
+	struct spi_transfer t = {
+		.tx_buf = NULL,
+		.rx_buf = &data,
+		.len = 2
+	};
+
+	// Dummy read beacuse the first read after writing to the conversion register will return the INVALID DATA value
+	ret = spi_sync_transfer(st->spi, &t, 1);
+    if (ret) {
+        dev_err(&st->spi->dev, "Failed dummy readback %d\n", ret);
+        return ret;
+    }
+
+    // Actual readback of the channel data
+    ret = spi_sync_transfer(st->spi, &t, 1);
+    if (ret) {
+        dev_err(&st->spi->dev, "Failed actual readback %d\n", ret);
+        return ret;
+    }
+
+	rcv_data = get_unaligned_be16(&data);
+	*readval = FIELD_GET(AD5592R_OUTPUT_MSK, rcv_data);
+	return 0;
+}
+
 static int iio_adc_cora_read_raw(struct iio_dev *indio_dev,
 								struct iio_chan_spec const *chan,
 								int *val,
@@ -100,22 +144,16 @@ static int iio_adc_cora_read_raw(struct iio_dev *indio_dev,
 								long mask)
 {
 	struct iio_adc_cora_st *st = iio_priv(indio_dev);
+	int ret;
 
 	switch(mask) {
 		case IIO_CHAN_INFO_RAW:
 			if(!st->reg_select) {
-				if (chan->channel == 0)
-					*val = st->chan_val[0];
-				else if (chan->channel == 1)
-					*val = st->chan_val[1];
-				else if (chan->channel == 2)
-					*val = st->chan_val[2];
-				else if (chan->channel == 3)
-					*val = st->chan_val[3];
-				else if (chan->channel == 4)
-					*val = st->chan_val[4];
-				else if (chan->channel == 5)
-					*val = st->chan_val[5];
+				ret = iio_adc_cora_read_chan(st, chan->channel, (u16 *) val);
+				if (ret) {
+					dev_err(&st->spi->dev, "Reading from channels failed");
+					return ret;
+				}
 				return IIO_VAL_INT;
 			}
 			else
@@ -141,27 +179,27 @@ static int iio_adc_cora_write_raw(struct iio_dev *indio_dev,
 			if(!st->reg_select) {
 				if (chan->channel == 0) {
 					dev_info(&indio_dev->dev, "Trying to write to channel 0: %d\n", val);
-					st->chan_val[0] = val;
+					// st->chan_val[0] = val;
 				}
 				else if (chan->channel == 1) {
 					dev_info(&indio_dev->dev, "Trying to write to channel 1: %d\n", val);
-					st->chan_val[1] = val;
+					// st->chan_val[1] = val;
 				}
 				else if (chan->channel == 2) {
 					dev_info(&indio_dev->dev, "Trying to write to channel 2: %d\n", val);
-					st->chan_val[2] = val;
+					// st->chan_val[2] = val;
 				}
 				else if (chan->channel == 3) {
 					dev_info(&indio_dev->dev, "Trying to write to channel 3: %d\n", val);
-					st->chan_val[3] = val;
+					// st->chan_val[3] = val;
 				}
 				else if (chan->channel == 4) {
 					dev_info(&indio_dev->dev, "Trying to write to channel 4: %d\n", val);
-					st->chan_val[4] = val;
+					// st->chan_val[4] = val;
 				}
 				else if (chan->channel == 5) {
 					dev_info(&indio_dev->dev, "Trying to write to channel 5: %d\n", val);
-					st->chan_val[5] = val;
+					// st->chan_val[5] = val;
 				}
 				return 0;
 			}
@@ -248,6 +286,7 @@ static int iio_adc_probe(struct spi_device *spi)
 
 	iio_adc_cora_spi_write(st, AD5592R_REG_PD_REF_CTRL,
 											FIELD_PREP(AD5592R_REG_EN_IREF, 1));
+	iio_adc_cora_spi_write(st, AD5592R_REG_ADC_CONFIG, GENMASK(5, 0));
 
 	return devm_iio_device_register(&spi->dev, indio_dev);
 }
