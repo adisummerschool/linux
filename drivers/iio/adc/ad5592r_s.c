@@ -32,6 +32,12 @@ const int CHANNEL_5 = 5;
 #define AD5592R_POWER_DISABLE		BIT(10)
 #define AD5592R_REG_EN_IREF		    BIT(9)
 
+#define AD5592R_REG_SEQ           0X02
+
+
+#define AD5592R_REG_ADC_CONFIG      0x04
+#define AD5592R_REG_OUTPUT          GENMASK(11,0)
+
 struct iio_adc_st {
 	struct spi_device *spi;
     int reg_select;
@@ -97,38 +103,54 @@ static int iio_ad5592r_s_debugfs_reg_access(struct iio_dev *indio_dev, unsigned 
     return iio_ad5592r_s_spi_write(st,reg, writeval);
 }
 
+static int iio_ad5592r_s_read_chan(struct iio_adc_st *st, int channel, u16 *readval){
+    
+    u16 data = 0;
+    u16 packet = 0;
+    
+    int ret = 0;
+
+    ret = iio_ad5592r_s_spi_write(st, AD5592R_REG_SEQ, BIT(channel));
+    if(ret){
+        dev_err(&st->spi->dev, "Writing conversion reg failed: %d\n", ret);
+        return ret;
+    }
+
+    struct spi_transfer t ={
+        .tx_buf = NULL,
+        .rx_buf = &packet,
+        .len = 2
+    };
+
+    ret = spi_sync_transfer(st->spi, &t, 1);
+	if (ret) {
+		dev_err(&st->spi->dev, "Failed receiving readback %d\n", ret);
+		return ret;
+	}
+
+    ret = spi_sync_transfer(st->spi, &t, 1);
+	if (ret) {
+		dev_err(&st->spi->dev, "Failed receiving readback %d\n", ret);
+		return ret;
+	}
+    data = get_unaligned_be16(&packet);
+    *readval = FIELD_GET(AD5592R_REG_OUTPUT,data);
+    return 0;
+}
 
 static int iio_ad5592r_s_read_raw(struct iio_dev *indio_dev, struct iio_chan_spec const *chan, int *val, int *val2, long mask)
 {
     struct iio_adc_st *st = iio_priv(indio_dev);
+    int ret;
+
     switch(mask){
-        case IIO_CHAN_INFO_RAW:
-            if(chan->channel == CHANNEL_0) 
-                *val = 0;
-            else if(chan->channel == CHANNEL_1) 
-                *val = 1;
-                else if(chan->channel == CHANNEL_2)
-                    *val = 2;
-                    else if(chan->channel == CHANNEL_3)
-                        *val = 3;
-                        else if(chan->channel == CHANNEL_4)
-                            *val = 4;
-                            else if(chan->channel == CHANNEL_5)
-                                *val = 5;    
-            return IIO_VAL_INT;                
+        case IIO_CHAN_INFO_RAW:               
             if (!st->reg_select) {
-                if(chan->channel == CHANNEL_0) 
-                    *val = st->chan_val[0];
-                else if(chan->channel == CHANNEL_1) 
-                    *val = st->chan_val[1];
-                    else if(chan->channel == CHANNEL_2)
-                        *val = st->chan_val[2];
-                        else if(chan->channel == CHANNEL_3)
-                            *val = st->chan_val[3];
-                            else if(chan->channel == CHANNEL_4)
-                                *val = st->chan_val[4];
-                                else if(chan->channel == CHANNEL_5)
-                                    *val = st->chan_val[5];
+                ret = iio_ad5592r_s_read_chan(st, chan->channel, (u16 *)val);
+                if(ret){
+                    dev_err(&st->spi->dev, "Reading from channels failed: %d\n", ret);
+                    return ret;
+                }
                 return IIO_VAL_INT; 
             }
             else 
@@ -145,44 +167,31 @@ static int iio_ad5592r_s_write_raw(struct iio_dev *indio_dev, struct iio_chan_sp
 {
     struct iio_adc_st *st = iio_priv(indio_dev);
     switch(mask){
-        case IIO_CHAN_INFO_RAW:
-            if(chan->channel == CHANNEL_0) 
-                dev_info(&indio_dev->dev, "Trying to write to channel 0: %d", val);
-            else  if(chan->channel == CHANNEL_1) 
-                    dev_info(&indio_dev->dev, "Trying to write to channel 1: %d", val);
-                else  if(chan->channel == CHANNEL_2)
-                        dev_info(&indio_dev->dev, "Trying to write to channel 2: %d", val);  
-                    else if(chan->channel == CHANNEL_3)
-                            dev_info(&indio_dev->dev, "Trying to write to channel 3: %d", val);
-                        else if(chan->channel == CHANNEL_4)
-                                dev_info(&indio_dev->dev, "Trying to write to channel 4: %d", val); 
-                            else if(chan->channel == CHANNEL_5)
-                                    dev_info(&indio_dev->dev, "Trying to write to channel 5: %d", val); 
-            return 0;                
+        case IIO_CHAN_INFO_RAW:                
             if(!st->reg_select){
                 if(chan->channel == CHANNEL_0){
                     dev_info(&indio_dev->dev, "Trying to write to channel 0: %d", val);
-                    st->chan_val[0] = val;
+                    //st->chan_val[0] = val;
                 }
                 else  if(chan->channel == CHANNEL_1){
                         dev_info(&indio_dev->dev, "Trying to write to channel 1: %d", val);
-                        st->chan_val[1] = val;
+                        //st->chan_val[1] = val;
                     }
                     else  if(chan->channel == CHANNEL_2){
                             dev_info(&indio_dev->dev, "Trying to write to channel 2: %d", val); 
-                            st->chan_val[2] = val; 
+                            //st->chan_val[2] = val; 
                     }
                         else if(chan->channel == CHANNEL_3){
                                 dev_info(&indio_dev->dev, "Trying to write to channel 3: %d", val);
-                                st->chan_val[3] = val;
+                                //st->chan_val[3] = val;
                         }
                             else if(chan->channel == CHANNEL_4){
                                     dev_info(&indio_dev->dev, "Trying to write to channel 4: %d", val); 
-                                    st->chan_val[4] = val;
+                                    //st->chan_val[4] = val;
                             }
                                 else if(chan->channel == CHANNEL_5){
                                         dev_info(&indio_dev->dev, "Trying to write to channel 5: %d", val); 
-                                        st->chan_val[5] = val;
+                                        //st->chan_val[5] = val;
                                 }
                 return 0;
             }
@@ -260,6 +269,7 @@ static int iio_ad5592r_s_probe(struct spi_device *spi){
     memset(st->chan_val, 0, sizeof(st->chan_val));
 
 	iio_ad5592r_s_spi_write(st, AD5592R_REG_PD_REF_CTRL, FIELD_PREP(AD5592R_REG_EN_IREF,1));
+    iio_ad5592r_s_spi_write(st, AD5592R_REG_ADC_CONFIG, GENMASK(5,0));
 
     indio_dev->name = "ad5592r_s";
     indio_dev->info = &iio_ad5592r_s_info;
