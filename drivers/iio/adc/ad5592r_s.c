@@ -21,6 +21,19 @@
 #define AD5592R_S_REG_PD 0xB
 #define AD5592R_S_EN_IREF BIT(9)
 
+#define AD5592R_S_ADC_REG 0x04
+#define AD5592R_S_REG_CFG GENMASK(5, 0)
+#define AD5592R_S_ADC_ENABLE 0x3F
+
+#define AD5592R_S_CNVST_START BIT(0)
+#define AD5592R_S_REG_CHAN_HIGH(x) (0x04 + (2 * (x)))
+#define AD5592R_S_REG_CHAN_LOW(x) (0x05 + (2 * (x)))
+#define AD5592R_S_HIGH_DATA_MSK GENMASK(11, 8)
+
+#define AD5592R_S_SEQ 0x02
+#define AD5592R_S_SEQ_MSK GENMASK(5, 0)
+#define AD5592R_S_SEQ_CHAN(x) BIT(x)
+#define AD5592R_S_CONV_DATA GENMASK(11, 0)
 struct adc_ad5592r_s_st {
 	struct spi_device* spi;
 	bool reg_select;
@@ -74,6 +87,34 @@ static int adc_ad5592r_s_spi_read(struct adc_ad5592r_s_st *st, u8 address, u16 *
 	return 0;
 }
 
+static int adc_ad5592r_s_read_chan(struct adc_ad5592r_s_st* st, int channel, u16* readval) {
+	u16 rx = 0;
+	u16 data = 0;
+	int ret;
+	struct spi_transfer t = {
+		.rx_buf = &rx,
+		.len = 2,
+	};
+	ret = adc_ad5592r_s_spi_write(st, AD5592R_S_SEQ, AD5592R_S_SEQ_CHAN(channel));
+	if(ret) {
+		dev_err(&st->spi->dev, "Writing conversion failed with error: %d\n", ret);
+		return ret;
+	}
+	ret = spi_sync_transfer(st->spi, &t, 1);
+	if(ret) {
+		dev_err(&st->spi->dev, "ADC dummy failed with error: %d\n", ret);
+		return ret;
+	}
+	ret = spi_sync_transfer(st->spi, &t, 1);
+	if(ret) {
+		dev_err(&st->spi->dev, "ADC conversion failed with error: %d\n", ret);
+		return ret;
+	}
+	data = get_unaligned_be16(&rx);
+	*readval = FIELD_GET(AD5592R_S_CONV_DATA, data);
+	return 0;
+}
+
 static int adc_ad5592r_s_debugfs_reg_access(struct iio_dev *indio_dev, unsigned reg, unsigned writeval, unsigned *readval) {
 	struct adc_ad5592r_s_st *st = iio_priv(indio_dev);
 	if(readval) {
@@ -87,33 +128,18 @@ static int adc_ad5592r_s_read_raw(struct iio_dev* indio_dev,
 				  int *val2, long mask)
 {
 	struct adc_ad5592r_s_st *st = iio_priv(indio_dev);
-
+	int ret;
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
 		if (!st->reg_select) {
-			switch (chan->channel) {
-			case 0:
-				*val = st->chan_val[0];
-				return IIO_VAL_INT;
-			case 1:
-				*val = st->chan_val[1];
-				return IIO_VAL_INT;
-			case 2:
-				*val = st->chan_val[2];
-				return IIO_VAL_INT;
-			case 3:
-				*val = st->chan_val[3];
-				return IIO_VAL_INT;
-			case 4:
-				*val = st->chan_val[4];
-				return IIO_VAL_INT;
-			case 5:
-				*val = st->chan_val[5];
-				return IIO_VAL_INT;
-			default:
-				return -EINVAL;
+			ret = adc_ad5592r_s_read_chan(st, chan->channel, (u16*)val);
+			if (ret) {
+				dev_err(&st->spi->dev, "ADC conversion failed with error: %d\n", ret);
+				return ret;
 			}
-		} else {
+			return IIO_VAL_INT;
+		}
+		else {
 			return -EINVAL;
 		}
 	case IIO_CHAN_INFO_ENABLE:
@@ -138,32 +164,32 @@ static int adc_ad5592r_s_write_raw(struct iio_dev* indio_dev,
 			case 0:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 0");
-				st->chan_val[0] = val;
+				//st->chan_val[0] = val;
 				break;
 			case 1:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 1");
-				st->chan_val[1] = val;
+				//st->chan_val[1] = val;
 				break;
 			case 2:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 2");
-				st->chan_val[2] = val;
+				//st->chan_val[2] = val;
 				break;
 			case 3:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 3");
-				st->chan_val[3] = val;
+				//st->chan_val[3] = val;
 				break;
 			case 4:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 4");
-				st->chan_val[4] = val;
+				//st->chan_val[4] = val;
 				break;
 			case 5:
 				dev_info(&indio_dev->dev,
 					 "Trying to write to channel 5");
-				st->chan_val[5] = val;
+				//st->chan_val[5] = val;
 				break;
 			default:
 				dev_info(&indio_dev->dev,
@@ -252,6 +278,7 @@ static int ad5592r_s_probe(struct spi_device *spi)
 	indio_dev->num_channels = ARRAY_SIZE(adc_ad5592r_s_channels);
 
 	adc_ad5592r_s_spi_write(st, AD5592R_S_REG_PD, FIELD_PREP(AD5592R_S_EN_IREF, 1));
+	adc_ad5592r_s_spi_write(st, AD5592R_S_ADC_REG, FIELD_PREP(AD5592R_S_REG_CFG, AD5592R_S_ADC_ENABLE));
 
 	return devm_iio_device_register(&spi->dev, indio_dev);
 }
