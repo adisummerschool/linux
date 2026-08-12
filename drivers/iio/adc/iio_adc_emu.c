@@ -57,7 +57,7 @@ struct iio_adc_emu_st {
 
 	if(ret)
 	{
-		dev_info(&st->spi->dev, "SPI READ transfer failed");
+		// dev_info(&st->spi->dev, "SPI READ transfer failed");
 		return ret;
 	}
 
@@ -75,9 +75,9 @@ static int iio_adc_emu_spi_write(struct iio_adc_emu_st *st, u8 addr, u8 data)
 	     FIELD_PREP(EMU_DATA_MSK, data);
 	put_unaligned_be16(tx, &package);
 
-	dev_info(&st->spi->dev,
-		 "Constructed TX:0x%02x \nConstructed PACKAGE:0x%02x", tx,
-		 package);
+	// dev_info(&st->spi->dev,
+	// 	 "Constructed TX:0x%02x \nConstructed PACKAGE:0x%02x", tx,
+	// 	 package);
 
 	return spi_sync_transfer(st->spi, &t, 1);
 }
@@ -238,12 +238,12 @@ static int iio_adc_emu_write_raw(struct iio_dev *indio_dev,
 		if (!st->reg_select) {
 			if (chan->channel) {
 				// st->chan_val[1] = val;
-				dev_info(&indio_dev->dev,
-					 "Trying to write to channel 1");
+				// dev_info(&indio_dev->dev,
+				// 	 "Trying to write to channel 1");
 			} else {
 				// st->chan_val[0] = val;
-				dev_info(&indio_dev->dev,
-					 "Trying to write to channel 0");
+				// dev_info(&indio_dev->dev,
+				// 	 "Trying to write to channel 0");
 			}
 			return 0;
 		} else {
