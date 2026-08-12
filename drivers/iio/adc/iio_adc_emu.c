@@ -20,8 +20,15 @@
 #define EMU_POWER_EN	0x0
 #define EMU_POWER_DIS	0x20
 
+#define EMU_REG_CONVST	0x03
+#define EMU_CONVST_START	BIT(0)
+#define EMU_REG_CHAN_H(x)	(0x04 + (2 * (x)))
+#define EMU_REG_CHAN_L(x)	(0x05 + (2 * (x)))
+
+#define EMU_HIGH_DATA_MASK	GENMASK(11,8)
+
 struct iio_adc_emu_st {
-	bool reg_selsect;
+	bool reg_select;
 	int chan_val[2];
 	struct spi_device *spi;
 };
@@ -89,23 +96,60 @@ static int iio_adc_emu_debugfs_reg_access(struct iio_dev *indio_dev,
 	return iio_adc_emu_spi_write(st,reg,writeval);
 }
 
+
+static int iio_adc_emu_read_chan(struct iio_adc_emu_st *st, int chan,
+				u16 *data)
+{
+	u8 data_high = 0;
+	u8 data_low = 0;
+	u16 data_x = 0;
+
+	int ret = 0;
+
+	ret = iio_adc_emu_spi_write(st,EMU_REG_CONVST,
+					FIELD_PREP(EMU_CONVST_START,1));
+	if(ret){
+		dev_err(&st->spi->dev,"Writing conv reg failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = iio_adc_emu_spi_read(st,EMU_REG_CHAN_H(chan),&data_high);
+	if(ret){
+		dev_err(&st->spi->dev,"Reading high reg failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = iio_adc_emu_spi_read(st,EMU_REG_CHAN_L(chan),&data_low);
+	if(ret){
+		dev_err(&st->spi->dev,"Reading low reg failed: %d\n", ret);
+		return ret;
+	}
+
+	data_x = FIELD_PREP(EMU_HIGH_DATA_MASK,data_high) | data_low;
+
+	*data = data_x;
+
+	return 0;
+}
+
 static int iio_adc_emu_read_raw(struct iio_dev *indio_dev,
 	                        struct iio_chan_spec const *chan, int *val,
 	                        int *val2, long mask)
 {
 	struct iio_adc_emu_st *st = iio_priv(indio_dev);
+	int ret = 0;
+
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
-		if (!st->reg_selsect) {
-			if (chan->channel)
-				*val = st->chan_val[1];
-			else
-				*val = st->chan_val[0];
+		if (!st->reg_select) {
+
+			ret = iio_adc_emu_read_chan(st,chan->channel,(u16 *)val);
 			return IIO_VAL_INT;
+
 		} else
 			return -EINVAL;
 	case IIO_CHAN_INFO_ENABLE:
-		*val = st->reg_selsect;
+		*val = st->reg_select;
 		return IIO_VAL_INT;
 	default:
 		return -EINVAL;
@@ -120,26 +164,26 @@ static int iio_adc_emu_write_raw(struct iio_dev *indio_dev,
 
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
-		if (!st->reg_selsect) {
+		if (!st->reg_select) {
 			if (chan->channel) {
 				dev_info(&indio_dev->dev,
 					 "Trying to write to chanel 0");
-				st->chan_val[1] = val;
+				//st->chan_val[1] = val;
 			} else {
 				dev_info(&indio_dev->dev,
 					 "Trying to write to chanel 1");
-				st->chan_val[0] = val;
+				//st->chan_val[0] = val;
 			}
 			return 0;
 		} else
 			return -EINVAL;
 	case IIO_CHAN_INFO_ENABLE:
 		if(val){
-			st->reg_selsect = 1;
+			st->reg_select = 1;
 			iio_adc_emu_spi_write(st,EMU_POWER_ON_REG,EMU_POWER_DIS);
 		}
 		else{
-			st->reg_selsect = 0;
+			st->reg_select = 0;
 			iio_adc_emu_spi_write(st,EMU_POWER_ON_REG,EMU_POWER_EN);
 		}
 		return 0;
@@ -185,7 +229,7 @@ static int iio_adc_emu_probe(struct spi_device *spi)
 	indio_dev->num_channels = ARRAY_SIZE(iio_adc_emu_chanels);
 
 	st = iio_priv(indio_dev);
-	st->reg_selsect = 1;
+	st->reg_select = 1;
 	memset(st->chan_val, 0, sizeof(st->chan_val));
 	st->spi = spi;
 
