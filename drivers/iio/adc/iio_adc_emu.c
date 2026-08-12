@@ -14,9 +14,18 @@
 #define EMU_RDWR_MASK BIT(7)
 #define EMU_ADDR_MASK GENMASK(14, 8)
 #define EMU_DATA_MASK GENMASK(7, 0)
+
 #define EMU_POWER_REG 0x02
 #define EMU_POWER_ENABLE 0x0
 #define EMU_POWER_DISABLE 0x20
+
+#define EMU_REG_CNVST 0x03
+#define EMU_CNVST_START BIT(0)
+
+#define EMU_REG_CHAN0_HIGH(x) (0x04 + (2 * (x)))
+#define EMU_REG_CHAN0_LOW(x) (0x05 + (2 * (x)))
+
+#define EMU_HIGH_DATA_MSK GENMASK(11, 8)
 
  struct iio_adc_emu_st{
 	 int reg_select;
@@ -77,6 +86,36 @@ static int iio_adc_emu_spi_write(struct iio_adc_emu_st *st,
 	return spi_sync_transfer(st->spi, &t, 1);
 }
 
+static int iio_adc_emu_read_chan(struct iio_adc_emu_st *st, int channel, u16 *readval){
+	u8 high = 0;
+	u8 low = 0;
+	u16 data = 0;
+	int ret;
+
+	ret = iio_adc_emu_spi_write(st, EMU_REG_CNVST, FIELD_PREP(EMU_CNVST_START, 1));
+	if (ret){
+		dev_err(&st->spi->dev, "Writing conversion reg failed: %d\n", ret);
+		return ret;
+	}
+	
+	ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN0_HIGH(channel), &high);
+	if (ret){
+		dev_err(&st->spi->dev, "Reading high register failed: %d\n", ret);
+		return ret;
+	}
+
+	ret = iio_adc_emu_spi_read(st, EMU_REG_CHAN0_LOW(channel), &low);
+	if (ret){
+		dev_err(&st->spi->dev, "Reading low register failed: %d\n", ret);
+		return ret;
+	}
+
+	data = FIELD_PREP(EMU_HIGH_DATA_MSK, high) | low;
+	*readval = data;
+
+	return 0;
+}
+
 static int iio_adc_emu_debugfs_reg_access(struct iio_dev *indio_dev,
 				 unsigned int reg,
 				 unsigned int writeval,
@@ -96,13 +135,15 @@ static int iio_adc_emu_read_raw(struct iio_dev *indio_dev,
 				   long mask)
 {
 	struct iio_adc_emu_st *st = iio_priv(indio_dev);
+	int ret = 0;
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
 		if(!st->reg_select){
-			if(chan->channel)
-				*val = st->chan_val[1];
-			else
-				*val = st->chan_val[0];
+			ret = iio_adc_emu_read_chan(st, chan->channel, (u16 *) val);
+			if(ret){
+				dev_err(&indio_dev->dev, "Reading channel %d failed: %d\n", chan->channel, ret);
+				return ret;
+			}
 			return IIO_VAL_INT;
 		}
 		else
@@ -131,11 +172,11 @@ static int iio_adc_emu_write_raw(struct iio_dev *indio_dev,
 			if (chan->channel) {
 				dev_info(&indio_dev->dev,
 					 "Try to write to channel 1\n");
-				st->chan_val[1] = val;
+				// st->chan_val[1] = val;
 			} else {
 				dev_info(&indio_dev->dev,
 					 "Try to write to channel 0\n");
-				st->chan_val[0] = val;
+				// st->chan_val[0] = val;
 			}
 
 			return 0;
