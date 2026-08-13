@@ -8,8 +8,12 @@
 #include <linux/bitfield.h>
 #include <linux/module.h>
 #include <linux/unaligned.h>
+
 #include <linux/spi/spi.h>
 #include <linux/iio/iio.h>
+
+#include <linux/iio/triggered_buffer.h>
+#include <linux/iio/trigger_consumer.h>
 
 #define AD5592R_S_MSB_MSK			BIT(15)
 #define AD5592R_REG_ADDR_MSK		GENMASK(14, 11)
@@ -47,8 +51,8 @@ static int iio_adc_cora_spi_write(struct iio_adc_cora_st *st, u8 addr, u16 data)
 	tx = FIELD_PREP(AD5592R_S_MSB_MSK, 0) | FIELD_PREP(AD5592R_REG_ADDR_MSK, addr) | FIELD_PREP(AD5592R_REG_DATA_MSK, data);
 	put_unaligned_be16(tx, &package);
 
-	dev_info(&st->spi->dev, "tx we constructed %x\n", tx);
-	dev_info(&st->spi->dev, "package we constructed %x\n", package);
+	// dev_info(&st->spi->dev, "tx we constructed %x\n", tx);
+	// dev_info(&st->spi->dev, "package we constructed %x\n", package);
 
 	return spi_sync_transfer(st->spi, &t, 1);
 }
@@ -118,7 +122,7 @@ static int iio_adc_cora_read_chan(struct iio_adc_cora_st *st,
 		.len = 2
 	};
 
-	// Dummy read beacuse the first read after writing to the conversion register will return the INVALID DATA value
+	// Dummy read because the first read after writing to the conversion register will return the INVALID DATA value
 	ret = spi_sync_transfer(st->spi, &t, 1);
     if (ret) {
         dev_err(&st->spi->dev, "Failed dummy readback %d\n", ret);
@@ -216,48 +220,138 @@ static int iio_adc_cora_write_raw(struct iio_dev *indio_dev,
 	}
 }
 
+static irqreturn_t iio_adc_cora_trigger_handler(int irq, void *p)
+{
+	struct iio_poll_func *pf = p;
+	struct iio_dev *indio_dev = pf->indio_dev;
+	struct iio_adc_cora_st *st = iio_priv(indio_dev);
+	int bit = 0;
+	int ret;
+	u16 data = 0;
+	u16 rcv_data = 0;
+	u16 buf[6];
+	int i = 0;
+
+	struct spi_transfer t = {
+		.tx_buf = NULL,
+		.rx_buf = &data,
+		.len = 2
+	};
+
+	for_each_set_bit(bit, indio_dev->active_scan_mask, indio_dev->num_channels)
+	{
+		ret = iio_adc_cora_spi_write(st, AD5592R_REG_EN_ADC_SEQ,
+								BIT(bit));
+		if(ret) {
+			dev_err(&st->spi->dev, "Writing conversion in buffer reg failed %d\n", ret);
+			iio_trigger_notify_done(indio_dev->trig);
+			return IRQ_HANDLED;
+		}
+
+		// Dummy read because the first read after writing to the conversion register will return the INVALID DATA value
+		// See figure 45 in AD5592R datasheet for more details
+		ret = spi_sync_transfer(st->spi, &t, 1);
+		if (ret) {
+			dev_err(&st->spi->dev, "Failed dummy readback %d\n", ret);
+			iio_trigger_notify_done(indio_dev->trig);
+			return IRQ_HANDLED;
+		}
+
+		// Actual readback of the channel data
+		ret = spi_sync_transfer(st->spi, &t, 1);
+		if (ret) {
+			dev_err(&st->spi->dev, "Failed actual readback %d\n", ret);
+			iio_trigger_notify_done(indio_dev->trig);
+			return IRQ_HANDLED;
+		}
+
+		rcv_data = get_unaligned_be16(&data);
+		buf[i++] = FIELD_GET(AD5592R_OUTPUT_MSK, rcv_data);
+	}
+
+	iio_push_to_buffers(indio_dev, buf);
+	iio_trigger_notify_done(indio_dev->trig);
+	return IRQ_HANDLED;
+}
+
 static const struct iio_chan_spec iio_adc_cora_channels[] = {
 	{
 		.type = IIO_VOLTAGE,
 		.channel = 0,
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 0,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
 	},
 	{
 		.type = IIO_VOLTAGE,
 		.channel = 1,
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 1,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
 	},
 	{
 		.type = IIO_VOLTAGE,
 		.channel = 2,
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 2,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
 	},
 	{
 		.type = IIO_VOLTAGE,
 		.channel = 3,
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 3,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
 	},
 	{
 		.type = IIO_VOLTAGE,
 		.channel = 4,
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 4,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
 	},
 	{
 		.type = IIO_VOLTAGE,
 		.channel = 5,
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 5,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
 	}
 };
 
@@ -271,6 +365,7 @@ static int iio_adc_probe(struct spi_device *spi)
 {
 	struct iio_dev *indio_dev;
 	struct iio_adc_cora_st *st;
+	int ret;
 
 	indio_dev = devm_iio_device_alloc(&spi->dev, sizeof(*st));
 
@@ -287,6 +382,13 @@ static int iio_adc_probe(struct spi_device *spi)
 	iio_adc_cora_spi_write(st, AD5592R_REG_PD_REF_CTRL,
 											FIELD_PREP(AD5592R_REG_EN_IREF, 1));
 	iio_adc_cora_spi_write(st, AD5592R_REG_ADC_CONFIG, GENMASK(5, 0));
+
+	ret = devm_iio_triggered_buffer_setup(&spi->dev, indio_dev, NULL,
+									&iio_adc_cora_trigger_handler, NULL);
+	if (ret) {
+		dev_err(&spi->dev, "Failed to create buffer");
+		return ret;
+	}
 
 	return devm_iio_device_register(&spi->dev, indio_dev);
 }
