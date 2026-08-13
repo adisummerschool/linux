@@ -8,7 +8,8 @@
  * Copyright (C) 2025 Analog Devices, Inc.
  */
 /dts-v1/;
-#include "zynq-coraz7s.dtsi"
+//#include "zynq-coraz7s.dtsi"
+#include "zynq-cora7s-axi-pwm-led.dts"
 
 &spi0 {
     status = "okay";
