@@ -2,6 +2,7 @@
 /dts-v1/;
 #include "zynq-coraz7s.dtsi"
 
+
 / {
 	fpga_axi: fpga-axi@0 {
 		compatible = "simple-bus";
