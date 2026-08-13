@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0
+/dts-v1/;
+#include "zynq-coraz7s.dtsi"
+
+/ {
+	fpga_axi: fpga-axi@0 {
+		compatible = "simple-bus";
+		#address-cells = <0x1>;
+		#size-cells = <0x1>;
+		ranges;
+
+		axi_pwm_led: axi_pwm_led@44a00000 {
+			compatible = "adi,axi-pwm-led";
+			reg = <0x44a00000 0x10000>;
+		};
+	};
+};
