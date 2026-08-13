@@ -5,7 +5,7 @@
  * Copyright (C) 2025 Analog Devices, Inc.
  */
 /dts-v1/;
-#include "zynq-coraz7s.dtsi"
+#include "zynq-cora7s-axi-pwm-led.dts"
 
 &spi0 {
 		status = "okay";
@@ -16,3 +16,5 @@
 			spi-cpol;
 	    };
 };
+
+cat ${IIO_PATH}/iio:device0/in_voltage2_raw > ${IIO_PATH}/iio:device2/out_count2_raw
