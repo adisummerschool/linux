@@ -11,7 +11,8 @@
  #include <linux/spi/spi.h>
  #include <linux/iio/iio.h>
  #include <linux/delay.h>
-
+ #include <linux/iio/triggered_buffer.h>
+ #include <linux/iio/trigger_consumer.h>
 
 #define AD5592R_S_MSB_MSK BIT(15)
 #define AD5592R_S_ADDR_MSK GENMASK(14, 11)
@@ -53,8 +54,8 @@
 
 	put_unaligned_be16(tx, &package); //convertim datele in big endian pentru a fi trimise prin spi
 
-	dev_info(&st->spi->dev, "tx we constructed: %x\n", tx);
-	dev_info(&st->spi->dev, "package we constructed: %x\n", package);
+	//dev_info(&st->spi->dev, "tx we constructed: %x\n", tx);
+	//dev_info(&st->spi->dev, "package we constructed: %x\n", package);
 
  	return spi_sync_transfer(st->spi, &t, 1); //trimitem datele prin spi, 1 pentru ca avem 1 structura de tip transfer
 
@@ -235,6 +236,31 @@ static int ad5592r_s_read_chan(struct ad5592r_s_st *st, int channel, u16 *readva
             }
  }
 
+	static irqreturn_t ad5592r_s_trigger_handler(int irq, void *p)
+	{
+		struct iio_poll_func *pf = p;
+		struct iio_dev *indio_dev = pf->indio_dev;
+		struct ad5592r_s_st *st = iio_priv(indio_dev);
+		int bit;
+		int ret;
+		u16 data;
+		u16 buf[6];
+		int i = 0;
+
+		for_each_set_bit(bit, indio_dev->active_scan_mask, indio_dev->num_channels) {
+			ret = ad5592r_s_read_chan(st, bit, &data);
+			if (ret) {
+				dev_err(&st->spi->dev, "Reading channel failed in trigger: %d\n", ret);
+				iio_trigger_notify_done(indio_dev->trig);
+				return IRQ_HANDLED;
+			}
+			buf[i++] = data;
+		}
+
+		iio_push_to_buffers(indio_dev, buf);
+		iio_trigger_notify_done(indio_dev->trig);
+		return IRQ_HANDLED;
+	}
 
   static const struct iio_chan_spec ad5592r_s_channels[] = { //confirurare canalelor, in cazul nostru 2 canale de tip tensiune
  	{
@@ -243,6 +269,12 @@ static int ad5592r_s_read_chan(struct ad5592r_s_st *st, int channel, u16 *readva
  		.channel = 0,
  		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 0,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
  	},
  	{
  		.type = IIO_VOLTAGE,
@@ -250,6 +282,12 @@ static int ad5592r_s_read_chan(struct ad5592r_s_st *st, int channel, u16 *readva
  		.channel = 1,
  		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 1,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
  	},
 	{
  		.type = IIO_VOLTAGE,
@@ -257,6 +295,12 @@ static int ad5592r_s_read_chan(struct ad5592r_s_st *st, int channel, u16 *readva
  		.channel = 2,
  		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 2,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
  	},
  	{
  		.type = IIO_VOLTAGE,
@@ -264,6 +308,12 @@ static int ad5592r_s_read_chan(struct ad5592r_s_st *st, int channel, u16 *readva
  		.channel = 3,
  		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 3,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
  	},
 	{
  		.type = IIO_VOLTAGE,
@@ -271,6 +321,12 @@ static int ad5592r_s_read_chan(struct ad5592r_s_st *st, int channel, u16 *readva
  		.channel = 4,
  		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 4,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
  	},
  	{
  		.type = IIO_VOLTAGE,
@@ -278,6 +334,12 @@ static int ad5592r_s_read_chan(struct ad5592r_s_st *st, int channel, u16 *readva
  		.channel = 5,
  		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 5,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16
+		}
  	},
  };
 
@@ -293,6 +355,7 @@ static int ad5592r_s_read_chan(struct ad5592r_s_st *st, int channel, u16 *readva
  {
  	struct iio_dev *indio_dev;
 	struct ad5592r_s_st *st;
+	int ret;
 
  	indio_dev = devm_iio_device_alloc(&spi->dev, sizeof(*st)); //devm submodul linux, se ocupa de alocarea de memorie
 	
@@ -307,6 +370,14 @@ static int ad5592r_s_read_chan(struct ad5592r_s_st *st, int channel, u16 *readva
 
 	ad5592r_s_spi_write(st, AD5592R_S_REG_PD_ADDR, FIELD_PREP(AD5592R_S_REG_EN_IREF, 1));
  	ad5592r_s_spi_write(st, AD5592R_S_REG_ADC_CONFIG_ADDR, GENMASK(5, 0)); //pinii 0-5 ca intrări ADC
+	
+	ret = devm_iio_triggered_buffer_setup(&spi->dev, indio_dev, NULL, &ad5592r_s_trigger_handler, NULL);
+	
+	if (ret) {
+		dev_err(&spi->dev, "failed to create buffer\n");
+		return ret;
+	}
+
 	return devm_iio_device_register(&spi->dev, indio_dev);
  }
 
