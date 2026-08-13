@@ -1,0 +1,26 @@
+#-----------------------------------------------------------
+# Vivado v2025.1 (64-bit)
+# SW Build 6140274 on Wed May 21 22:58:25 MDT 2025
+# IP Build 6138677 on Thu May 22 03:10:11 MDT 2025
+# SharedData Build 6139179 on Tue May 20 17:58:58 MDT 2025
+# Start of session at: Thu Aug 13 14:49:44 2026
+# Process ID         : 841918
+# Current directory  : /home/analog/workspace/embedded/adc
+# Command line       : vivado
+# Log file           : /home/analog/workspace/embedded/adc/vivado.log
+# Journal file       : /home/analog/workspace/embedded/adc/vivado.jou
+# Running On         : DESKTOP-CQO3VNT
+# Platform           : Kali
+# Operating System   : Kali GNU/Linux Rolling
+# Processor Detail   : Intel(R) Core(TM) i7-10875H CPU @ 2.30GHz
+# CPU Frequency      : 2304.007 MHz
+# CPU Physical cores : 8
+# CPU Logical cores  : 16
+# Host memory        : 33522 MB
+# Swap memory        : 8589 MB
+# Total Virtual      : 42112 MB
+# Available Virtual  : 35596 MB
+#-----------------------------------------------------------
+start_gui
+open_project /home/analog/workspace/hdl/projects/ad5592r_pmdz/coraz7s/ad5592r_coraz7s.xpr
+update_compile_order -fileset sources_1

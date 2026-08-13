@@ -11,6 +11,9 @@
 #include <linux/spi/spi.h>
 #include <linux/iio/iio.h>
 #include <linux/bitfield.h>
+#include <linux/iio/triggered_buffer.h>
+#include <linux/iio/trigger_consumer.h>
+
 
 #define ADC_RDWR_MSK BIT(15)
 #define ADC_ADDR_MSK GENMASK(14, 11)
@@ -239,6 +242,12 @@ static const struct iio_chan_spec iio_adc_placa_channels[] = {
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 0,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16,
+		}
 	},
 	{
 		.type = IIO_VOLTAGE,
@@ -246,6 +255,12 @@ static const struct iio_chan_spec iio_adc_placa_channels[] = {
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 1,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16,
+		}
 	},
 	{
 		.type = IIO_VOLTAGE,
@@ -253,6 +268,12 @@ static const struct iio_chan_spec iio_adc_placa_channels[] = {
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 2,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16,
+		}
 	},
 	{
 		.type = IIO_VOLTAGE,
@@ -260,6 +281,12 @@ static const struct iio_chan_spec iio_adc_placa_channels[] = {
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 3,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16,
+		}
 	},
 	{
 		.type = IIO_VOLTAGE,
@@ -267,6 +294,12 @@ static const struct iio_chan_spec iio_adc_placa_channels[] = {
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 4,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16,
+		}
 	},
 	{
 		.type = IIO_VOLTAGE,
@@ -274,8 +307,46 @@ static const struct iio_chan_spec iio_adc_placa_channels[] = {
 		.indexed = 1,
 		.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
 		.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+		.scan_index = 5,
+		.scan_type = {
+			.sign = 'u',
+			.realbits = 12,
+			.storagebits = 16,
+		}
 	}
 };
+
+static irqreturn_t iio_adc_placa_trigger_handler(int irq, void *p)
+{	
+	struct iio_poll_func *pf = p;
+	struct iio_dev *indio_dev = pf->indio_dev;
+	struct iio_adc_placa_st *st = iio_priv(indio_dev);
+	int bit = 0;
+	u16 buf[6];
+	memset(buf, 0, sizeof(buf));
+	int index = 0;
+
+	for_each_set_bit(bit, indio_dev->active_scan_mask,
+			 indio_dev->num_channels) {
+
+		int ret = iio_adc_placa_read_channel(st, bit, &buf[index]);
+		
+		if (ret) {
+			dev_err(&st->spi->dev,
+				"Reading buffer channel register failed %d\n",
+				ret);
+			iio_trigger_notify_done(indio_dev->trig);
+			return IRQ_HANDLED;
+		}
+
+		index++;
+	}
+
+	iio_push_to_buffers(indio_dev, buf);
+	iio_trigger_notify_done(indio_dev->trig);
+	return IRQ_HANDLED;
+}
+
 
 static const struct iio_info iio_adc_placa_info = {
 	.read_raw = &iio_adc_placa_read_raw,
@@ -313,6 +384,14 @@ static int iio_adc_placa_probe(struct spi_device *spi)
 	if (ret) {
 		dev_err(&st->spi->dev, "Writing START conversion failed %d\n",
 			ret);
+		return ret;
+	}
+
+	ret = devm_iio_triggered_buffer_setup(
+		&spi->dev, indio_dev, NULL, &iio_adc_placa_trigger_handler, NULL);
+
+	if (ret) {
+		dev_info(&st->spi->dev, "Failed to create buffer %d\n", ret);
 		return ret;
 	}
 
