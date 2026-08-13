@@ -11,6 +11,8 @@
 #include <linux/module.h>
 #include <linux/spi/spi.h>
 #include <linux/iio/iio.h>
+#include <linux/iio/triggered_buffer.h>
+#include <linux/iio/trigger_consumer.h>
 
 #define AD5592R_S_MSB_MSK			BIT(15)
 #define AD5592R_S_ADDR_MSK			GENMASK(14, 11)
@@ -29,9 +31,11 @@
 #define AD5592R_S_ADC_CH_MSK			GENMASK(14, 12)
 #define AD5592R_S_ADC_DATA_MSK			GENMASK(11, 0)
 
+#define AD5592R_S_NUM_CHANNELS			6
+
 struct ad5592r_s_st {
 	int reg_select;
-	int chan_val[6];
+	int chan_val[AD5592R_S_NUM_CHANNELS];
 	struct spi_device *spi;
 };
 
@@ -51,9 +55,6 @@ static int ad5592r_s_spi_write(struct ad5592r_s_st *st,
 	     FIELD_PREP(AD5592R_S_DATA_MSK, data);
 
 	put_unaligned_be16(tx, &package);
-
-	dev_info(&st->spi->dev, "tx we constructed: %x\n", tx);
-	dev_info(&st->spi->dev, "package we constructed: %x\n", package);
 
 	return spi_sync_transfer(st->spi, &t, 1);
 }
@@ -156,10 +157,6 @@ static int ad5592r_s_read_chan(struct ad5592r_s_st *st,
 	ret = ad5592r_s_spi_transfer(st, &data);
 	if (ret)
 		return ret;
-
-	dev_info(&st->spi->dev,
-		 "ADC channel %d frame: 0x%04x\n",
-		 channel, data);
 
 	if (FIELD_GET(AD5592R_S_ADC_CH_MSK, data) != channel) {
 		dev_err(&st->spi->dev,
@@ -297,6 +294,38 @@ static int ad5592r_s_write_raw(struct iio_dev *indio_dev,
 	}
 }
 
+static irqreturn_t ad5592r_s_trigger_handler(int irq, void *p)
+{
+	struct iio_poll_func *pf = p;
+	struct iio_dev *indio_dev = pf->indio_dev;
+	struct ad5592r_s_st *st = iio_priv(indio_dev);
+	u16 buf[AD5592R_S_NUM_CHANNELS] = { 0 };
+	int bit;
+	int i = 0;
+	int ret;
+
+	for_each_set_bit(bit, indio_dev->active_scan_mask,
+			 indio_dev->num_channels) {
+		ret = ad5592r_s_read_chan(st, bit, &buf[i]);
+		if (ret) {
+			dev_err(&st->spi->dev,
+				"Reading channel %d in trigger failed: %d\n",
+				bit, ret);
+
+			iio_trigger_notify_done(indio_dev->trig);
+			return IRQ_HANDLED;
+		}
+
+		i++;
+	}
+
+	iio_push_to_buffers(indio_dev, buf);
+
+	iio_trigger_notify_done(indio_dev->trig);
+
+	return IRQ_HANDLED;
+}
+
 #define AD5592R_S_CHANNEL(_channel)				\
 {								\
 	.type = IIO_VOLTAGE,					\
@@ -304,6 +333,12 @@ static int ad5592r_s_write_raw(struct iio_dev *indio_dev,
 	.channel = (_channel),					\
 	.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),		\
 	.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),	\
+	.scan_index = (_channel),				\
+	.scan_type = {						\
+		.sign = 'u',					\
+		.realbits = 12,					\
+		.storagebits = 16,				\
+	},							\
 }
 
 static const struct iio_chan_spec ad5592r_s_channels[] = {
@@ -345,7 +380,7 @@ static int ad5592r_s_probe(struct spi_device *spi)
 	indio_dev->modes = INDIO_DIRECT_MODE;
 
 	/*
-	 * Enable the internal reference.
+	 * Enable internal reference.
 	 */
 	ret = ad5592r_s_spi_write(st,
 				  AD5592R_S_REG_PD_ADDR,
@@ -355,13 +390,26 @@ static int ad5592r_s_probe(struct spi_device *spi)
 
 	/*
 	 * Configure I/O0 - I/O5 as ADC inputs.
-	 * This is temporary for the current implementation.
 	 */
 	ret = ad5592r_s_spi_write(st,
 				  AD5592R_S_REG_ADC_CONFIG,
 				  GENMASK(5, 0));
 	if (ret)
 		return ret;
+
+	/*
+	 * Create IIO triggered buffer.
+	 */
+	ret = devm_iio_triggered_buffer_setup(&spi->dev,
+					      indio_dev,
+					      NULL,
+					      ad5592r_s_trigger_handler,
+					      NULL);
+	if (ret) {
+		dev_err(&spi->dev,
+			"Failed to create triggered buffer\n");
+		return ret;
+	}
 
 	return devm_iio_device_register(&spi->dev, indio_dev);
 }
