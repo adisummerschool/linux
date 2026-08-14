@@ -11,6 +11,8 @@
  #include <linux/spi/spi.h>
  #include <linux/iio/iio.h>
  #include <linux/bitfield.h>
+ #include <linux/iio/triggered_buffer.h>
+ #include <linux/iio/trigger_consumer.h>
 
  #define AD5592R_S_MSB_MSK BIT(15)
  #define AD5592R_S_ADDR_MSK GENMASK(14, 11)
@@ -198,13 +200,70 @@
    }
  }
 
+ static irqreturn_t iio_ad5592r_trigger_handler(int irq, void *p)
+ {
+   struct iio_poll_func *pf = p;
+   struct iio_dev *indio_dev = pf->indio_dev;
+   struct iio_ad5592r_st *st = iio_priv(indio_dev);
+   int ret;
+   u16 rcv_data = 0;
+   u16 rx = 0;
+   int bit = 0;
+   u16 readval;
+   int i = 0;
+   u16 buf[6];
+   struct spi_transfer t = {
+      .rx_buf = &rx,
+      .len = 2
+   };
+
+   for_each_set_bit(bit, indio_dev->active_scan_mask, indio_dev->num_channels)
+   {
+      ret = iio_ad5592r_spi_write(st, AD5592R_REG_SEQ_ADDR, 1 << bit);
+   
+   if (ret) {
+      dev_err(&st->spi->dev, "Writing sequence reg fail %d\n", ret);
+      iio_trigger_notify_done(indio_dev->trig);
+      return IRQ_HANDLED;
+   }
+   
+      ret = spi_sync_transfer(st->spi, &t, 1);
+   if (ret) {
+      dev_info(&st->spi->dev, "Failed dummy transfer %d\n", ret);
+      iio_trigger_notify_done(indio_dev->trig);
+      return IRQ_HANDLED;
+   }
+
+   ret = spi_sync_transfer(st->spi, &t, 1);
+   if (ret) {
+      dev_info(&st->spi->dev, "Failed reading channel %d\n", ret);
+      iio_trigger_notify_done(indio_dev->trig);
+      return IRQ_HANDLED;
+   }
+
+      rcv_data = get_unaligned_be16(&rx);
+      readval = FIELD_GET(AD5592R_CNV_MASK, rcv_data);
+      buf[i++] = readval;
+   }
+
+   iio_push_to_buffers(indio_dev, buf);
+   iio_trigger_notify_done(indio_dev->trig);
+   return IRQ_HANDLED;
+ }
+
  static const struct iio_chan_spec iio_ad5592r_channels[] = {
    {
       .type = IIO_VOLTAGE,
       .channel = 0,
       .indexed = 1,
       .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+      .scan_index = 0,
+      .scan_type = {
+         .sign = 'u',
+         .realbits = 12,
+         .storagebits = 16
+      }
    },
 
    {
@@ -212,7 +271,13 @@
       .channel = 1,
       .indexed = 1,
       .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+      .scan_index = 1,
+      .scan_type = {
+         .sign = 'u',
+         .realbits = 12,
+         .storagebits = 16
+      }
    },
 
    {
@@ -220,7 +285,13 @@
       .channel = 2,
       .indexed = 1,
       .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+      .scan_index = 2,
+      .scan_type = {
+         .sign = 'u',
+         .realbits = 12,
+         .storagebits = 16
+      }
    },
 
    {
@@ -228,7 +299,13 @@
       .channel = 3,
       .indexed = 1,
       .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+      .scan_index = 3,
+      .scan_type = {
+         .sign = 'u',
+         .realbits = 12,
+         .storagebits = 16
+      }
    },
 
    {
@@ -236,7 +313,13 @@
       .channel = 4,
       .indexed = 1,
       .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+      .scan_index = 4,
+      .scan_type = {
+         .sign = 'u',
+         .realbits = 12,
+         .storagebits = 16
+      }
    },
 
    {
@@ -244,7 +327,13 @@
       .channel = 5,
       .indexed = 1,
       .info_mask_separate = BIT(IIO_CHAN_INFO_RAW),
-      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE)
+      .info_mask_shared_by_all = BIT(IIO_CHAN_INFO_ENABLE),
+      .scan_index = 5,
+      .scan_type = {
+         .sign = 'u',
+         .realbits = 12,
+         .storagebits = 16
+      }
    }
  };
 
@@ -258,6 +347,7 @@
  {
     struct iio_dev *indio_dev;
     struct iio_ad5592r_st *st;
+    int ret;
 
     indio_dev = devm_iio_device_alloc(&spi->dev, sizeof(*st));
 
@@ -269,6 +359,13 @@
     indio_dev->info = &iio_ad5592r_info;
     indio_dev->channels = iio_ad5592r_channels;
     indio_dev->num_channels = 6;
+
+    ret = devm_iio_triggered_buffer_setup(&spi->dev, indio_dev, NULL, &iio_ad5592r_trigger_handler, NULL);
+
+    if (ret) {
+      dev_err(&spi->dev, "Failed to create buffer");
+      return ret;
+    }
 
     iio_ad5592r_spi_write(st, AD5592R_REG_PD_ADDR, FIELD_PREP(AD5592R_REG_EN_IREF, 1));
     iio_ad5592r_spi_write(st, AD5592R_REG_CONFIG_ADDR, AD5592R_REG_CONFIG_CHAN);
